@@ -8,7 +8,7 @@ Critical Flow:
 2. Look up organization by phone_number_id
 3. 🔍 CRITICAL: Look up sender - are they staff?
 4. Route to StaffHandler OR CustomerHandler
-5. Process message and send response
+5. Process message with AI and send response
 
 This is what enables ONE WhatsApp number to serve TWO different experiences.
 """
@@ -33,6 +33,7 @@ from app.models import (
 from app.services import customer as customer_service
 from app.services import organization as org_service
 from app.services import staff as staff_service
+from app.services.conversation import ConversationHandler
 from app.services.whatsapp import WhatsAppClient
 
 logger = logging.getLogger(__name__)
@@ -174,10 +175,7 @@ class MessageRouter:
         sender_phone: str,
         message_id: str,
     ) -> str:
-        """Handle message from staff member.
-
-        For now, this is a simple echo handler.
-        Later, this will be replaced with AI that has staff tools.
+        """Handle message from staff member using AI.
 
         Args:
             org: Organization
@@ -189,10 +187,7 @@ class MessageRouter:
         Returns:
             Response text to send back
         """
-        # TODO: Replace with AI conversation handler
-        # For now, acknowledge and show it worked
-
-        logger.info(f"   Processing staff message with simple handler (AI coming soon)")
+        logger.info(f"   Processing staff message with AI handler")
 
         # Store the incoming message
         await self._store_message(
@@ -204,16 +199,16 @@ class MessageRouter:
             content=message_content,
         )
 
-        # Simple response showing staff capabilities
-        response = (
-            f"Hola {staff.name}! 👋\n\n"
-            f"Soy Yume, tu asistente. Reconozco que eres parte del equipo.\n\n"
-            f"Pronto podrás:\n"
-            f"• Ver tu agenda del día\n"
-            f"• Bloquear tiempo personal\n"
-            f"• Marcar citas completadas\n"
-            f"• Registrar walk-ins\n\n"
-            f"(Por ahora estoy en modo de prueba)"
+        # Use AI conversation handler
+        conversation_handler = ConversationHandler(
+            db=self.db,
+            organization=org,
+        )
+
+        response = await conversation_handler.handle_staff_message(
+            staff=staff,
+            conversation=None,  # Staff conversations don't need persistent context
+            message_content=message_content,
         )
 
         return response
@@ -226,10 +221,7 @@ class MessageRouter:
         sender_phone: str,
         message_id: str,
     ) -> str:
-        """Handle message from customer.
-
-        For now, this is a simple echo handler.
-        Later, this will be replaced with AI that has customer tools.
+        """Handle message from customer using AI.
 
         Args:
             org: Organization
@@ -241,10 +233,7 @@ class MessageRouter:
         Returns:
             Response text to send back
         """
-        # TODO: Replace with AI conversation handler
-        # For now, acknowledge and show it worked
-
-        logger.info(f"   Processing customer message with simple handler (AI coming soon)")
+        logger.info(f"   Processing customer message with AI handler")
 
         # Get or create conversation
         conversation = await self._get_or_create_conversation(org.id, customer.id)
@@ -260,17 +249,16 @@ class MessageRouter:
             conversation_id=conversation.id,
         )
 
-        # Simple response showing customer capabilities
-        customer_name = customer.name or "cliente"
-        response = (
-            f"¡Hola {customer_name}! 👋\n\n"
-            f"Bienvenido a {org.name}. Soy Yume, tu asistente virtual.\n\n"
-            f"Pronto podrás:\n"
-            f"• Agendar citas\n"
-            f"• Reprogramar citas\n"
-            f"• Cancelar citas\n"
-            f"• Ver tus próximas citas\n\n"
-            f"(Por ahora estoy en modo de prueba)"
+        # Use AI conversation handler
+        conversation_handler = ConversationHandler(
+            db=self.db,
+            organization=org,
+        )
+
+        response = await conversation_handler.handle_customer_message(
+            customer=customer,
+            conversation=conversation,
+            message_content=message_content,
         )
 
         return response

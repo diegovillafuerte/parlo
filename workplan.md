@@ -6,9 +6,9 @@
 
 ## Current Status
 
-**Phase:** Testing Infrastructure Complete - Ready for Database Setup ✅
+**Phase:** Conversational AI Integration Complete ✅
 **Last Updated:** December 27, 2024
-**Last Task Completed:** Testing guide and seed data script created
+**Last Task Completed:** Full Claude AI integration with tools for customer and staff
 **Blocked By:** Docker Desktop not installed (needed for Postgres/Redis)
 
 ---
@@ -16,6 +16,119 @@
 ## Completed Tasks
 
 <!-- Add completed tasks here with dates. Most recent first. -->
+
+### 2024-12-27 - Conversational AI Integration
+
+**What was built:**
+- **Anthropic Client Wrapper** (`app/ai/client.py`)
+  - Claude API integration with error handling
+  - Tool call extraction and response parsing
+  - Fallback handling when API key not configured
+
+- **System Prompts** (`app/ai/prompts.py`)
+  - Customer prompt: Natural Mexican Spanish, booking flow guidance
+  - Staff prompt: Schedule management, walk-ins, status updates
+  - Dynamic context injection (services, business hours, customer history)
+
+- **Customer Tools** - 6 tools for booking flow:
+  - `check_availability` - Check available slots (ALWAYS before offering times)
+  - `book_appointment` - Book confirmed appointments
+  - `get_my_appointments` - View upcoming appointments
+  - `cancel_appointment` - Cancel existing appointments
+  - `reschedule_appointment` - Change appointment times
+  - `handoff_to_human` - Transfer to business owner
+
+- **Staff Tools** - 7 tools for schedule management:
+  - `get_my_schedule` - View personal schedule
+  - `get_business_schedule` - View all appointments
+  - `block_time` - Block personal time (lunch, breaks)
+  - `mark_appointment_status` - Complete/no-show/cancel
+  - `book_walk_in` - Register walk-in customers
+  - `get_customer_history` - Lookup customer history
+  - `cancel_customer_appointment` - Cancel with optional notification
+
+- **Conversation Handler** (`app/services/conversation.py`)
+  - Tool execution loop (Claude → tool → Claude → response)
+  - Conversation history management
+  - Context updates for continuity
+  - Graceful fallbacks when AI not configured
+
+- **Message Router Updates**
+  - Integrated AI handlers for both staff and customers
+  - Replaced placeholder responses with full AI flow
+
+**Key Files Created:**
+- `app/ai/client.py` - Anthropic client wrapper
+- `app/ai/prompts.py` - System prompts (Mexican Spanish)
+- `app/ai/tools.py` - Tool definitions and handlers
+- `app/services/conversation.py` - AI conversation orchestration
+
+**Architecture:**
+```
+Message → Router → ConversationHandler
+                         ↓
+                   Build System Prompt
+                         ↓
+                   Get Conversation History
+                         ↓
+                   Claude API Call (with tools)
+                         ↓
+                   Tool Execution Loop ←──┐
+                         ↓                │
+                   Execute Tool ──────────┘
+                         ↓
+                   Final Response → WhatsApp
+```
+
+**Tool Flow Example (Booking):**
+```
+Customer: "Quiero una cita para corte mañana"
+Claude: [uses check_availability tool]
+System: Returns available slots
+Claude: "Tengo estos horarios disponibles para mañana: 10:00 AM, 2:00 PM, 4:00 PM"
+Customer: "A las 2"
+Claude: [uses book_appointment tool]
+System: Returns confirmation
+Claude: "Listo, tu cita quedó agendada para mañana a las 2:00 PM ✓"
+```
+
+**Verification:**
+- ✅ App loads successfully with 39 routes
+- ✅ All imports resolve correctly
+- ✅ AI client has fallback for missing API key
+- ✅ Tools defined for all customer and staff operations
+- ✅ Prompts in natural Mexican Spanish
+
+**Next Steps:**
+- Install Docker and set up database
+- Create Alembic migration
+- Test with real Claude API key
+- Fine-tune prompts based on real conversations
+
+---
+
+### 2024-12-27 - Testing Infrastructure
+
+**What was built:**
+- **Comprehensive Testing Guide** (`TESTING.md`) with step-by-step instructions
+- **Seed Data Script** (`scripts/seed_test_data.py`) for creating test organization and data
+- Complete testing workflow documented: database setup → seed data → test webhooks
+- Test data includes:
+  - Test organization with WhatsApp connection (phone_number_id: `test_phone_123`)
+  - Staff member for routing tests (Pedro González: `525512345678`)
+  - Service type (Corte de cabello - 30 min)
+  - Primary location with business hours
+
+**Key files created:**
+- `TESTING.md` - Comprehensive testing guide with 10 steps
+- `scripts/seed_test_data.py` - Test data seeding and cleanup script
+
+**Status:**
+- ✅ Testing documentation complete
+- ✅ Seed script ready
+- ⏳ **Blocked by**: Docker not installed on development machine
+
+---
 
 ### 2024-12-26 - WhatsApp Integration (Mock Mode)
 
@@ -259,14 +372,14 @@ Process & Respond
 
 ## Conversational AI Checklist
 
-- [ ] Anthropic client wrapper
-- [ ] Message routing (staff vs customer)
-- [ ] Customer conversation handler
-- [ ] Staff conversation handler
-- [ ] Customer tools implemented
-- [ ] Staff tools implemented
-- [ ] System prompts (Spanish)
-- [ ] Conversation state management
+- [x] Anthropic client wrapper
+- [x] Message routing (staff vs customer)
+- [x] Customer conversation handler
+- [x] Staff conversation handler
+- [x] Customer tools implemented
+- [x] Staff tools implemented
+- [x] System prompts (Spanish)
+- [x] Conversation state management
 
 ## Notifications Checklist
 
