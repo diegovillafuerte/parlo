@@ -209,11 +209,83 @@ META_WEBHOOK_VERIFY_TOKEN=...
 async def test_booking_flow(db_session, mock_claude, mock_whatsapp):
     org = await create_test_org(db_session)
     customer_phone = "+525512345678"
-    
+
     # Simulate incoming message
     response = await handle_message(org, customer_phone, "Quiero una cita")
-    
+
     assert "qué servicio" in response.lower()
+```
+
+## PR Review Guidelines
+
+When reviewing pull requests, check the following:
+
+### Code Quality Checklist
+
+- [ ] **Follows existing patterns** - Code matches the style and patterns already in the codebase
+- [ ] **No over-engineering** - Solution is as simple as possible, no unnecessary abstractions
+- [ ] **Async consistency** - All database operations use async/await, no blocking calls
+- [ ] **Type hints** - Functions have proper type annotations
+- [ ] **No hardcoded values** - Configuration belongs in `app/config.py` or environment variables
+
+### Security Checklist
+
+- [ ] **No secrets in code** - API keys, tokens, passwords are in environment variables
+- [ ] **Input validation** - User input is validated via Pydantic schemas
+- [ ] **SQL injection safe** - Using SQLAlchemy ORM, no raw SQL with string interpolation
+- [ ] **No sensitive data in logs** - Phone numbers, names, messages are not logged in production
+
+### Business Logic Checklist
+
+- [ ] **Organization scoping** - All queries filter by `organization_id` where appropriate
+- [ ] **Staff identification** - Phone number lookups work correctly for routing
+- [ ] **Timezone handling** - Dates stored in UTC, converted for display only
+- [ ] **Mexican Spanish** - All user-facing text is in natural Mexican Spanish (tú, not usted)
+
+### Testing Checklist
+
+- [ ] **Tests included** - New functionality has corresponding tests
+- [ ] **Tests pass** - All existing tests still pass
+- [ ] **Edge cases covered** - Especially for availability/scheduling logic
+- [ ] **Mocks used** - External APIs (WhatsApp, Claude) are mocked in tests
+
+### Database Checklist
+
+- [ ] **Migration included** - Schema changes have an Alembic migration
+- [ ] **Migration reversible** - Downgrade path works
+- [ ] **Indexes considered** - Frequently queried fields have indexes
+- [ ] **Cascade deletes** - Foreign key relationships handle deletions properly
+
+### WhatsApp Integration Checklist
+
+- [ ] **Idempotency** - Duplicate webhooks are handled gracefully (check message_id)
+- [ ] **Response time** - Webhook responds within 20 seconds
+- [ ] **Error handling** - Failures don't crash the webhook, return 200 to Meta
+- [ ] **Mock mode works** - Can test locally without Meta credentials
+
+### Documentation Checklist
+
+- [ ] **Docstrings** - Public functions have docstrings explaining purpose
+- [ ] **CLAUDE.md updated** - If adding new patterns or conventions
+- [ ] **workplan.md updated** - If completing a tracked task
+- [ ] **README updated** - If changing setup or deployment process
+
+### Review Response Format
+
+When leaving PR review comments:
+
+1. **Be specific** - Point to exact lines, suggest concrete fixes
+2. **Explain why** - Don't just say "wrong", explain the reasoning
+3. **Prioritize** - Distinguish blocking issues from nice-to-haves
+4. **Approve when ready** - Don't nitpick if the PR achieves its goal safely
+
+Example review comment:
+```
+Line 45: This query doesn't filter by organization_id, which could leak
+data across organizations. Add `.where(Staff.organization_id == org_id)`
+to the query.
+
+Blocking: Yes - security issue
 ```
 
 ## Common Tasks
