@@ -1,0 +1,67 @@
+"""Staff model - represents employees and owners."""
+
+import uuid
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.appointment import Appointment
+    from app.models.availability import Availability
+    from app.models.location import Location
+    from app.models.organization import Organization
+
+
+class StaffRole(str, Enum):
+    """Staff role enum."""
+
+    OWNER = "owner"
+    EMPLOYEE = "employee"
+
+
+class Staff(Base, UUIDMixin, TimestampMixin):
+    """People who provide services - also users who can interact via WhatsApp."""
+
+    __tablename__ = "staff"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "phone_number", name="uq_staff_org_phone"),
+        Index("ix_staff_phone_number", "phone_number"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("locations.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone_number: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # Their personal WhatsApp - used to identify them as staff
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=StaffRole.EMPLOYEE.value
+    )
+    permissions: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )  # {can_view_schedule: true, can_book: true, can_cancel: true, ...}
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    # Relationships
+    organization: Mapped["Organization"] = relationship("Organization", back_populates="staff")
+    location: Mapped["Location | None"] = relationship("Location", back_populates="staff")
+    appointments: Mapped[list["Appointment"]] = relationship(
+        "Appointment", back_populates="staff", foreign_keys="Appointment.staff_id"
+    )
+    availability: Mapped[list["Availability"]] = relationship(
+        "Availability", back_populates="staff", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<Staff(id={self.id}, name='{self.name}', role='{self.role}', phone='{self.phone_number}')>"
