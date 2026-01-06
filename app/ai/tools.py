@@ -145,6 +145,20 @@ CUSTOMER_TOOLS = [
             "required": ["reason"],
         },
     },
+    {
+        "name": "update_customer_info",
+        "description": "Actualiza la información del cliente (nombre). Usa esta herramienta cuando el cliente proporcione su nombre durante la conversación.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Nombre del cliente",
+                },
+            },
+            "required": ["name"],
+        },
+    },
 ]
 
 
@@ -337,9 +351,10 @@ class ToolHandler:
             "check_availability": self._check_availability,
             "book_appointment": lambda inp: self._book_appointment(inp, customer),
             "get_my_appointments": lambda inp: self._get_my_appointments(customer),
-            "cancel_appointment": self._cancel_appointment,
-            "reschedule_appointment": self._reschedule_appointment,
+            "cancel_appointment": lambda inp: self._cancel_appointment(inp, customer),
+            "reschedule_appointment": lambda inp: self._reschedule_appointment(inp, customer),
             "handoff_to_human": self._handoff_to_human,
+            "update_customer_info": lambda inp: self._update_customer_info(inp, customer),
             # Staff tools
             "get_my_schedule": lambda inp: self._get_my_schedule(inp, staff),
             "get_business_schedule": self._get_business_schedule,
@@ -439,7 +454,7 @@ class ToolHandler:
         formatted_slots = []
         for slot in slots:
             formatted_slots.append({
-                "date": slot.date.strftime("%Y-%m-%d"),
+                "date": slot.start_time.strftime("%Y-%m-%d"),
                 "time": slot.start_time.strftime("%I:%M %p"),
                 "staff_name": slot.staff_name,
                 "staff_id": str(slot.staff_id),
@@ -463,6 +478,7 @@ class ToolHandler:
         service_name = tool_input.get("service_name", "")
         start_time_str = tool_input.get("start_time", "")
         customer_name = tool_input.get("customer_name")
+        staff_name = tool_input.get("staff_name")
 
         # Update customer name if provided
         if customer_name and not customer.name:
@@ -491,14 +507,26 @@ class ToolHandler:
         # Calculate end time
         end_time = start_time + timedelta(minutes=service.duration_minutes)
 
-        # Find available staff (first available for now)
-        staff_result = await self.db.execute(
-            select(Staff).where(
-                Staff.organization_id == self.org.id,
-                Staff.is_active == True,
+        # Find staff - prefer specified staff, otherwise first available
+        if staff_name:
+            staff_result = await self.db.execute(
+                select(Staff).where(
+                    Staff.organization_id == self.org.id,
+                    Staff.name.ilike(f"%{staff_name}%"),
+                    Staff.is_active == True,
+                )
             )
-        )
-        staff = staff_result.scalars().first()
+            staff = staff_result.scalar_one_or_none()
+            if not staff:
+                return {"error": f"No encontré al empleado '{staff_name}'"}
+        else:
+            staff_result = await self.db.execute(
+                select(Staff).where(
+                    Staff.organization_id == self.org.id,
+                    Staff.is_active == True,
+                )
+            )
+            staff = staff_result.scalars().first()
 
         if not staff:
             return {"error": "No hay personal disponible"}
@@ -516,6 +544,24 @@ class ToolHandler:
 
         if not location:
             return {"error": "No hay ubicación configurada"}
+
+        # Check for conflicts before creating
+        conflicts = await scheduling_service.check_appointment_conflicts(
+            db=self.db,
+            organization_id=self.org.id,
+            staff_id=staff.id,
+            spot_id=None,  # AI bookings don't specify spot yet
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        if conflicts:
+            conflict = conflicts[0]
+            conflict_time = conflict.scheduled_start.strftime("%I:%M %p")
+            return {
+                "error": f"El horario no está disponible. {staff.name} ya tiene una cita a las {conflict_time}.",
+                "suggestion": "Por favor pregunta al cliente por otro horario.",
+            }
 
         # Create appointment
         appointment = Appointment(
@@ -585,8 +631,13 @@ class ToolHandler:
 
         return {"appointments": formatted}
 
-    async def _cancel_appointment(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+    async def _cancel_appointment(
+        self, tool_input: dict[str, Any], customer: Customer | None
+    ) -> dict[str, Any]:
         """Cancel an appointment."""
+        if not customer:
+            return {"error": "No se pudo identificar al cliente"}
+
         appointment_id = tool_input.get("appointment_id", "")
         reason = tool_input.get("reason", "")
 
@@ -602,6 +653,10 @@ class ToolHandler:
         if appointment.organization_id != self.org.id:
             return {"error": "Cita no encontrada"}
 
+        # Verify customer owns this appointment
+        if appointment.customer_id != customer.id:
+            return {"error": "Esta cita no te pertenece"}
+
         appointment.status = AppointmentStatus.CANCELLED.value
         appointment.cancellation_reason = reason
         await self.db.flush()
@@ -613,9 +668,12 @@ class ToolHandler:
         }
 
     async def _reschedule_appointment(
-        self, tool_input: dict[str, Any]
+        self, tool_input: dict[str, Any], customer: Customer | None
     ) -> dict[str, Any]:
         """Reschedule an appointment."""
+        if not customer:
+            return {"error": "No se pudo identificar al cliente"}
+
         appointment_id = tool_input.get("appointment_id", "")
         new_start_time_str = tool_input.get("new_start_time", "")
 
@@ -629,12 +687,35 @@ class ToolHandler:
         if not appointment or appointment.organization_id != self.org.id:
             return {"error": "Cita no encontrada"}
 
+        # Verify customer owns this appointment
+        if appointment.customer_id != customer.id:
+            return {"error": "Esta cita no te pertenece"}
+
         # Get service duration
         service = await self.db.get(ServiceType, appointment.service_type_id)
         if not service:
             return {"error": "Servicio no encontrado"}
 
         new_end_time = new_start_time + timedelta(minutes=service.duration_minutes)
+
+        # Check for conflicts (exclude current appointment from check)
+        conflicts = await scheduling_service.check_appointment_conflicts(
+            db=self.db,
+            organization_id=self.org.id,
+            staff_id=appointment.staff_id,
+            spot_id=appointment.spot_id,
+            start_time=new_start_time,
+            end_time=new_end_time,
+            exclude_appointment_id=apt_uuid,  # Don't conflict with self
+        )
+
+        if conflicts:
+            conflict = conflicts[0]
+            conflict_time = conflict.scheduled_start.strftime("%I:%M %p")
+            return {
+                "error": f"El nuevo horario no está disponible. Ya hay una cita a las {conflict_time}.",
+                "suggestion": "Por favor elige otro horario.",
+            }
 
         appointment.scheduled_start = new_start_time
         appointment.scheduled_end = new_end_time
@@ -658,6 +739,26 @@ class ToolHandler:
             "success": True,
             "message": f"Conversación transferida al dueño del negocio. Razón: {reason}",
             "notify_owner": True,
+        }
+
+    async def _update_customer_info(
+        self, tool_input: dict[str, Any], customer: Customer | None
+    ) -> dict[str, Any]:
+        """Update customer information."""
+        if not customer:
+            return {"error": "No se pudo identificar al cliente"}
+
+        name = tool_input.get("name", "").strip()
+        if not name:
+            return {"error": "El nombre es requerido"}
+
+        customer.name = name
+        await self.db.flush()
+
+        return {
+            "success": True,
+            "message": f"Nombre actualizado a '{name}'",
+            "customer_name": name,
         }
 
     # -------------------------------------------------------------------------
@@ -898,6 +999,24 @@ class ToolHandler:
         # Create appointment starting now
         start_time = datetime.now(timezone.utc)
         end_time = start_time + timedelta(minutes=service.duration_minutes)
+
+        # Check for conflicts before creating
+        conflicts = await scheduling_service.check_appointment_conflicts(
+            db=self.db,
+            organization_id=self.org.id,
+            staff_id=staff.id,
+            spot_id=None,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        if conflicts:
+            conflict = conflicts[0]
+            conflict_end = conflict.scheduled_end.strftime("%I:%M %p")
+            return {
+                "error": f"No puedes registrar el walk-in ahora. Tienes una cita hasta las {conflict_end}.",
+                "suggestion": "Espera a que termine la cita actual o asigna a otro empleado.",
+            }
 
         appointment = Appointment(
             organization_id=self.org.id,

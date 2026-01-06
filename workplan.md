@@ -1,536 +1,566 @@
-# WORKPLAN.md - Project Progress Tracker
+# Yume Implementation Workplan
 
-> **Purpose:** This file tracks what has been completed, decisions made, and current state. Update this file after completing each task. Read this file at the start of every session.
+This document tracks progress toward production readiness. Requirements are from `docs/PROJECT_SPEC.md`.
+
+**Last Updated:** 2026-01-06
 
 ---
 
 ## Current Status
 
-**Phase:** Web App Implementation Complete ✅
-**Last Updated:** December 27, 2024
-**Last Task Completed:** Web App implementation (backend + frontend)
-**Next Steps:** Run migrations when database is available, test full flow
+**Phase:** Phase 2 Preparation
+**Estimated Completion:** ~75-80% of core functionality implemented
+**Blockers:** None currently
+
+### What's Working
+- Backend API (57 endpoints)
+- Database models (14 entities)
+- AI conversation with tool calling (customer + staff flows)
+- Message routing (staff vs customer identification)
+- Availability slot calculation
+- Appointment conflict validation (double-booking prevention)
+- Admin dashboard (complete)
+- Frontend: login, location/staff/service/spot management, company settings
+- Frontend: Schedule page with appointment viewing, filtering, and actions
+- Magic link authentication
+- Celery background tasks with 24-hour appointment reminders
+
+### What's Not Working
+- Daily schedule summary task (Phase 3.3)
+- New booking notifications (Phase 3.4)
+- WhatsApp template messages
+- Create/Edit appointment modals in dashboard (deferred)
 
 ---
 
-## Completed Tasks
+## Phase 1: Foundation Verification ✅ COMPLETE
 
-<!-- Add completed tasks here with dates. Most recent first. -->
+Phase 1 established the core architecture. All items below are implemented.
 
-### 2024-12-27 - Web App for Business Owners
-
-**What was built:**
-- **Spot Model** (`app/models/spot.py`)
-  - Physical service stations (chairs, tables, beds)
-  - Linked to locations with cascade delete
-  - Unique constraint on (location_id, name)
-  - Display order for UI sorting
-
-- **Authentication System**
-  - `app/models/auth_token.py` - Magic link tokens with expiry
-  - `app/utils/jwt.py` - JWT token creation and validation
-  - `app/services/auth.py` - Magic link generation and verification
-  - `app/api/v1/auth.py` - Auth endpoints (request-magic-link, verify-magic-link, logout)
-
-- **Location CRUD API** (`app/api/v1/locations.py`)
-  - Full CRUD for organization locations
-  - Validation: can't delete the only location
-
-- **Spots CRUD API** (`app/api/v1/spots.py`)
-  - Full CRUD for spots within locations
-  - Soft delete (is_active = false)
-
-- **Next.js Frontend** (`/frontend`)
-  - Login page with phone number input
-  - Magic link verification page
-  - Dashboard layout with 3 tabs and responsive navigation
-  - Schedule tab with calendar/list view toggle
-  - Employees tab (ready for data integration)
-  - Company tab with settings, locations, services, spots sections
-
-**Key Files Created:**
-- `app/models/spot.py` - Spot model
-- `app/models/auth_token.py` - Auth token model
-- `app/schemas/spot.py` - Spot schemas
-- `app/schemas/auth.py` - Auth schemas
-- `app/services/location.py` - Location service
-- `app/services/spot.py` - Spot service
-- `app/services/auth.py` - Auth service
-- `app/api/v1/locations.py` - Location endpoints
-- `app/api/v1/spots.py` - Spot endpoints
-- `app/api/v1/auth.py` - Auth endpoints
-- `app/utils/jwt.py` - JWT utilities
-- `frontend/` - Complete Next.js application
-
-**Files Modified:**
-- `app/models/appointment.py` - Added spot_id FK
-- `app/models/staff.py` - Added default_spot_id FK
-- `app/models/location.py` - Added spots relationship
-- `app/schemas/appointment.py` - Added spot_id fields
-- `app/schemas/staff.py` - Added default_spot_id fields
-- `app/api/deps.py` - Added JWT auth dependency
-- `app/config.py` - Added JWT and frontend settings
-- `pyproject.toml` - Added PyJWT dependency
-- `.env.example` - Added JWT and frontend config
-
-**Verification:**
-- ✅ Backend loads with 52 routes
-- ✅ Frontend builds successfully
-- ✅ All 6 pages render (/, /login, /verify, /schedule, /employees, /company)
-- ✅ Auth flow ready (magic link → JWT)
-
-**Architecture:**
-```
-Magic Link Flow:
-1. User enters phone → POST /auth/request-magic-link
-2. System sends WhatsApp with link (or prints in dev mode)
-3. User clicks link → GET /verify?token=xxx
-4. Frontend calls POST /auth/verify-magic-link
-5. Backend validates token, returns JWT
-6. Frontend stores JWT, redirects to /schedule
-```
+| Task | Status |
+|------|--------|
+| Database models (14 entities) | ✅ |
+| SQLAlchemy async setup | ✅ |
+| Alembic migrations | ✅ |
+| FastAPI application structure | ✅ |
+| Pydantic schemas | ✅ |
+| Basic CRUD endpoints | ✅ |
+| OpenAI integration | ✅ |
+| Twilio WhatsApp webhook | ✅ |
+| Message routing logic | ✅ |
+| AI tool definitions | ✅ |
+| Frontend Next.js setup | ✅ |
+| Magic link auth | ✅ |
+| Admin dashboard | ✅ |
 
 ---
 
-### 2024-12-27 - Conversational AI Integration
+## Phase 2: Core Booking Flow
 
-**What was built:**
-- **Anthropic Client Wrapper** (`app/ai/client.py`)
-  - Claude API integration with error handling
-  - Tool call extraction and response parsing
-  - Fallback handling when API key not configured
+**Goal:** Complete the customer booking journey end-to-end via WhatsApp.
 
-- **System Prompts** (`app/ai/prompts.py`)
-  - Customer prompt: Natural Mexican Spanish, booking flow guidance
-  - Staff prompt: Schedule management, walk-ins, status updates
-  - Dynamic context injection (services, business hours, customer history)
+### 2.1 Appointment Conflict Validation ✅ COMPLETE
+**Priority:** HIGH
+**Files:** `app/api/v1/appointments.py`, `app/services/scheduling.py`, `app/ai/tools.py`
 
-- **Customer Tools** - 6 tools for booking flow:
-  - `check_availability` - Check available slots (ALWAYS before offering times)
-  - `book_appointment` - Book confirmed appointments
-  - `get_my_appointments` - View upcoming appointments
-  - `cancel_appointment` - Cancel existing appointments
-  - `reschedule_appointment` - Change appointment times
-  - `handoff_to_human` - Transfer to business owner
+- [x] Add validation in `create_appointment` to check for overlapping appointments
+- [x] Check staff availability (not double-booked)
+- [x] Check spot availability (not double-booked)
+- [x] Return clear error messages when conflicts exist (Spanish)
+- [x] Add unit tests for conflict scenarios
+- [x] Update AI tools (book_appointment, book_walk_in, reschedule_appointment)
 
-- **Staff Tools** - 7 tools for schedule management:
-  - `get_my_schedule` - View personal schedule
-  - `get_business_schedule` - View all appointments
-  - `block_time` - Block personal time (lunch, breaks)
-  - `mark_appointment_status` - Complete/no-show/cancel
-  - `book_walk_in` - Register walk-in customers
-  - `get_customer_history` - Lookup customer history
-  - `cancel_customer_appointment` - Cancel with optional notification
+**Implementation:**
+- Added `check_appointment_conflicts()` function to `app/services/scheduling.py`
+- REST API returns 409 Conflict with Spanish error message
+- AI tools return error dict with suggestion for alternatives
+- Created `tests/test_scheduling.py` with 13 test cases
 
-- **Conversation Handler** (`app/services/conversation.py`)
-  - Tool execution loop (Claude → tool → Claude → response)
-  - Conversation history management
-  - Context updates for continuity
-  - Graceful fallbacks when AI not configured
+**Acceptance:** Cannot create overlapping appointments for same staff or spot.
 
-- **Message Router Updates**
-  - Integrated AI handlers for both staff and customers
-  - Replaced placeholder responses with full AI flow
+### 2.2 Complete Schedule Page ✅ COMPLETE
+**Priority:** HIGH
+**Files:** `frontend/src/app/schedule/page.tsx`, `frontend/src/lib/api/appointments.ts`
 
-**Key Files Created:**
-- `app/ai/client.py` - Anthropic client wrapper
-- `app/ai/prompts.py` - System prompts (Mexican Spanish)
-- `app/ai/tools.py` - Tool definitions and handlers
-- `app/services/conversation.py` - AI conversation orchestration
+- [x] Wire up appointment fetching API
+- [x] Display appointments in calendar view
+- [x] Display appointments in list view
+- [x] Add date navigation (day/week)
+- [x] Filter by staff member
+- [ ] Add "Create Appointment" modal (deferred - rarely used via dashboard)
+- [ ] Add "Edit Appointment" modal (deferred - rarely used via dashboard)
+- [x] Add "Cancel Appointment" action with confirmation
+- [x] Add "Mark Complete" action
+- [x] Add "Mark No-Show" action
 
-**Architecture:**
-```
-Message → Router → ConversationHandler
-                         ↓
-                   Build System Prompt
-                         ↓
-                   Get Conversation History
-                         ↓
-                   Claude API Call (with tools)
-                         ↓
-                   Tool Execution Loop ←──┐
-                         ↓                │
-                   Execute Tool ──────────┘
-                         ↓
-                   Final Response → WhatsApp
-```
+**Implementation:**
+- Created `frontend/src/lib/api/appointments.ts` with API client functions
+- Updated schedule page with data fetching via useEffect/useCallback
+- Added staff filter dropdown with real staff data
+- Calendar view shows appointments in time slots (8 AM - 8 PM)
+- List view shows sortable table with all appointment details
+- Added action buttons: Complete, No-Show, Cancel
+- Status badges with Spanish labels and color coding
+- Loading and empty states with appropriate messaging
 
-**Tool Flow Example (Booking):**
-```
-Customer: "Quiero una cita para corte mañana"
-Claude: [uses check_availability tool]
-System: Returns available slots
-Claude: "Tengo estos horarios disponibles para mañana: 10:00 AM, 2:00 PM, 4:00 PM"
-Customer: "A las 2"
-Claude: [uses book_appointment tool]
-System: Returns confirmation
-Claude: "Listo, tu cita quedó agendada para mañana a las 2:00 PM ✓"
-```
+**Acceptance:** Business owner can view, cancel, complete appointments from dashboard.
 
-**Verification:**
-- ✅ App loads successfully with 39 routes
-- ✅ All imports resolve correctly
-- ✅ AI client has fallback for missing API key
-- ✅ Tools defined for all customer and staff operations
-- ✅ Prompts in natural Mexican Spanish
+### 2.3 AI Tool Fixes ✅ COMPLETE
+**Priority:** MEDIUM
+**Files:** `app/ai/tools.py`
 
-**Next Steps:**
-- Install Docker and set up database
-- Create Alembic migration
-- Test with real Claude API key
-- Fine-tune prompts based on real conversations
+- [x] Verify `check_availability` returns correct slots (fixed slot.date bug)
+- [x] Verify `book_appointment` creates appointment with all required fields (added staff_name support)
+- [x] Verify `cancel_appointment` works for customer's own appointments (added ownership validation)
+- [x] Verify `reschedule_appointment` checks availability before moving (added ownership validation)
+- [x] Add `update_customer_info` tool to capture name during booking (new tool added)
+- [ ] Test complete booking flow via WhatsApp (requires live testing)
+
+**Fixes Applied:**
+- Fixed `check_availability`: `slot.date` → `slot.start_time` (bug fix)
+- Fixed `book_appointment`: Now respects `staff_name` parameter
+- Fixed `cancel_appointment`: Added customer ownership validation (security fix)
+- Fixed `reschedule_appointment`: Added customer ownership validation (security fix)
+- Added `update_customer_info` tool: Allows updating customer name during conversation
+
+**Acceptance:** Customer can book, view, cancel, reschedule appointments via WhatsApp conversation.
+
+### 2.4 Staff WhatsApp Flow
+**Priority:** MEDIUM
+**Files:** `app/ai/tools.py`, `app/ai/prompts.py`
+
+- [ ] Verify `get_my_schedule` returns staff's appointments for date
+- [ ] Verify `get_today_schedule` works
+- [ ] Verify `block_time` creates availability exception
+- [ ] Verify `mark_appointment_complete` updates status
+- [ ] Verify `mark_no_show` updates status
+- [ ] Verify `book_walk_in` creates appointment with source=walk_in
+- [ ] Test complete staff flow via WhatsApp
+
+**Acceptance:** Staff can view schedule, block time, manage appointments via WhatsApp.
 
 ---
 
-### 2024-12-27 - Testing Infrastructure
+## Phase 3: Background Tasks & Notifications
 
-**What was built:**
-- **Comprehensive Testing Guide** (`TESTING.md`) with step-by-step instructions
-- **Seed Data Script** (`scripts/seed_test_data.py`) for creating test organization and data
-- Complete testing workflow documented: database setup → seed data → test webhooks
-- Test data includes:
-  - Test organization with WhatsApp connection (phone_number_id: `test_phone_123`)
-  - Staff member for routing tests (Pedro González: `525512345678`)
-  - Service type (Corte de cabello - 30 min)
-  - Primary location with business hours
+**Goal:** Implement Celery workers for reminders and notifications.
 
-**Key files created:**
-- `TESTING.md` - Comprehensive testing guide with 10 steps
-- `scripts/seed_test_data.py` - Test data seeding and cleanup script
+### 3.1 Celery Setup ✅ COMPLETE
+**Priority:** HIGH
+**Files:** `app/tasks/`, `app/config.py`, `docker-compose.yml`
 
-**Status:**
-- ✅ Testing documentation complete
-- ✅ Seed script ready
-- ⏳ **Blocked by**: Docker not installed on development machine
+- [x] Create `app/tasks/celery_app.py` with Celery configuration
+- [x] Add Celery worker to docker-compose
+- [x] Verify Redis connection for task queue
+- [x] Create basic health check task
+- [x] Create appointment reminder task with Celery Beat schedule
 
----
+**Implementation:**
+- Created `app/tasks/celery_app.py` with Redis broker configuration
+- Created `app/tasks/health.py` with ping/echo tasks
+- Created `app/tasks/reminders.py` with reminder tasks
+- Added `celery-worker` and `celery-beat` services to docker-compose.yml
+- Beat schedule checks for reminders every 5 minutes
 
-### 2024-12-26 - WhatsApp Integration (Mock Mode)
+**Acceptance:** `celery -A app.tasks.celery_app worker` starts without errors.
 
-**What was built:**
-- Complete WhatsApp webhook endpoint (GET verification + POST message handling)
-- WhatsApp API client with mock mode (send messages, templates)
-- Pydantic schemas for Meta's webhook payload format
-- **MESSAGE ROUTER** - The core product differentiator:
-  - Phone number-based staff vs customer identification
-  - Organization lookup by WhatsApp phone_number_id
-  - Message deduplication (idempotency)
-  - Conversation continuity management
-  - Extensive logging for debugging routing decisions
-- Simple conversation handlers (staff and customer)
-- Test utilities for local testing without Meta credentials
-- Full message flow working in mock mode
+### 3.2 Appointment Reminders ✅ COMPLETE
+**Priority:** HIGH
+**Files:** `app/tasks/reminders.py`, `app/services/whatsapp.py`
+**Requirement:** 3.5.2
 
-**Key files created:**
-- `app/schemas/whatsapp.py` - Meta webhook payload schemas
-- `app/services/whatsapp.py` - WhatsApp API client (with mock mode)
-- `app/services/message_router.py` - THE CORE routing logic
-- `app/api/v1/webhooks.py` - Webhook endpoints
-- `scripts/test_webhook.py` - Local testing utility
+- [x] Create `send_appointment_reminder` task
+- [x] Schedule reminder 24 hours before appointment
+- [x] Use Twilio to send WhatsApp message
+- [x] Create reminder message template (Spanish)
+- [x] Add Celery Beat schedule for checking upcoming appointments
+- [x] Mark `reminder_sent_at` on appointment after sending
+- [ ] Handle failed sends gracefully (retry logic) - basic error handling added
 
-**Message Router Architecture:**
-```
-Message Arrives
-     ↓
-Lookup Organization (by phone_number_id)
-     ↓
-Lookup Sender (by phone number)
-     ↓
-Is Sender Staff? (get_staff_by_phone)
-   ├─ YES → StaffConversationHandler
-   └─ NO  → CustomerConversationHandler (get_or_create)
-     ↓
-Process & Respond
-```
+**Implementation:**
+- `check_and_send_reminders` runs every 5 minutes via Celery Beat
+- Finds appointments in 23-25 hour window without reminders sent
+- `send_appointment_reminder` sends individual WhatsApp messages
+- Spanish message with date/time in org timezone
+- Dev mode logs instead of sending when no Twilio credentials
 
-**Key Implementations:**
-1. **Deduplication** - Checks message_id to prevent processing duplicates
-2. **Staff Recognition** - `get_staff_by_phone(org_id, phone)` for routing
-3. **Incremental Identity** - `get_or_create_customer()` pattern
-4. **Conversation Context** - Links messages to conversations
-5. **Mock Mode** - Full testing without Meta credentials
+**Acceptance:** Customers receive WhatsApp reminder 24 hours before appointment.
 
-**Mock Mode Features:**
-- WhatsApp client logs instead of calling Meta API
-- Test script simulates webhook payloads
-- Can test full flow locally: webhook → router → response
-- Easy to switch to production (just update settings)
+### 3.3 Daily Schedule Summary
+**Priority:** MEDIUM
+**Files:** `app/tasks/notifications.py`
+**Requirement:** 1.6.22
 
-**Verification:**
-- ✅ App loads with webhook endpoints
-- ✅ GET /webhooks/whatsapp - Verification endpoint
-- ✅ POST /webhooks/whatsapp - Message receiver
-- ✅ Message router with extensive logging
-- ✅ Test utilities ready for local testing
+- [ ] Create `send_daily_schedule` task
+- [ ] Run at configured time (e.g., 7 AM local time)
+- [ ] Format schedule as WhatsApp message
+- [ ] Send to business owner's WhatsApp
+- [ ] Include: appointments for the day, any blocked times
+
+**Acceptance:** Business owner receives daily schedule summary each morning.
+
+### 3.4 New Booking Notifications
+**Priority:** MEDIUM
+**Files:** `app/ai/tools.py`, `app/services/whatsapp.py`
+**Requirement:** 1.6.21
+
+- [ ] When `book_appointment` tool succeeds, notify owner
+- [ ] Send WhatsApp message with booking details
+- [ ] Include: customer name/phone, service, time, staff
+
+**Acceptance:** Business owner receives notification when new appointment is booked.
+
+### 3.5 Cancellation Notifications
+**Priority:** MEDIUM
+**Requirement:** 3.5.3, 3.5.4
+
+- [ ] Notify customer when appointment cancelled by business
+- [ ] Notify customer when appointment rescheduled by business
+- [ ] Use template messages for outside 24-hour window
+
+**Acceptance:** Customers notified of changes to their appointments.
 
 ---
 
-### 2024-12-26 - Core Backend Implementation
+## Phase 4: Web Dashboard Completion
 
-**What was built:**
-- Comprehensive Pydantic schemas for all entities (Create, Update, Response patterns)
-- Service layer with business logic for all core operations
-- Complete CRUD API endpoints for:
-  - Organizations (with WhatsApp connection)
-  - Service Types
-  - Staff (with phone lookup for message routing)
-  - Customers (with incremental identity pattern)
-  - Appointments (with cancel/complete actions)
-  - Availability (with slot calculation algorithm)
-- API dependencies (organization lookup, pagination, error handling)
-- Fully functional availability slot calculation engine
+**Goal:** Complete remaining dashboard functionality.
 
-**Key files created:**
-- `app/schemas/*.py` - 7 schema files with Create/Update/Response patterns
-- `app/services/*.py` - 5 service files with business logic
-- `app/api/v1/*.py` - 6 API endpoint files
-- `app/api/deps.py` - Common dependencies and utilities
+### 4.1 Customer Management
+**Priority:** MEDIUM
+**Files:** `frontend/src/app/customers/page.tsx` (new)
+**Requirements:** 1.7.x
 
-**Key implementations:**
-- **Staff phone lookup** (`/staff/lookup`) - Core function for message routing
-- **Customer get_or_create** - Incremental identity pattern implementation
-- **Availability slot calculation** - Complex scheduling algorithm that:
-  - Considers recurring staff availability
-  - Applies exception dates
-  - Removes conflicting appointments
-  - Returns available time slots by staff
-- **Organization-scoped endpoints** - All resources properly scoped to organizations
+- [ ] Create customers list page
+- [ ] Add customer search by name/phone
+- [ ] Add customer detail view
+- [ ] Show appointment history for customer
+- [ ] Allow editing customer details
+- [ ] Allow adding notes to customer
 
-**API Endpoints:**
-- 31 total API endpoints across 6 resource types
-- All endpoints following REST conventions
-- Proper error handling (404, 409 conflicts, validation)
-- Pagination support for list endpoints
+**Acceptance:** Business owner can view and manage customers from dashboard.
 
-**Verification:**
-- ✅ FastAPI app loads successfully with all 37 routes
-- ✅ All imports resolve correctly
-- ✅ No circular dependencies
-- ✅ Pydantic validation working
+### 4.2 Availability Management
+**Priority:** MEDIUM
+**Files:** `frontend/src/app/availability/page.tsx` (new), `app/api/v1/availability.py`
+**Requirements:** 1.8.x
 
-**Tests passing:** N/A (no tests written yet)
+- [ ] Fix org validation in availability endpoints
+- [ ] Create availability management UI
+- [ ] Allow blocking time for all employees (holiday)
+- [ ] Allow blocking time for specific employee
+- [ ] Show blocked times in schedule view
+- [ ] Allow removing blocks
 
----
+**Acceptance:** Business owner can manage availability and block times.
 
-### 2024-12-26 - Project Foundation Setup
+### 4.3 Business Hours Management
+**Priority:** MEDIUM
+**Files:** `frontend/src/app/company/page.tsx`
+**Requirement:** 1.2.3, 1.2.4
 
-**What was built:**
-- Complete project structure following PROJECT_SPEC.md architecture
-- All 9 core SQLAlchemy models (Organization, Location, Staff, ServiceType, Customer, Appointment, Conversation, Message, Availability)
-- FastAPI application skeleton with health endpoints
-- Alembic migration configuration
-- Docker Compose setup for Postgres + Redis
-- Comprehensive README.md with business and technical context
-- Development environment with all dependencies
+- [ ] Add business hours editor to location settings
+- [ ] Allow setting open/close time per day
+- [ ] Allow marking days as closed
+- [ ] Validate hours (open < close)
+- [ ] Update AI prompts to use actual location hours
 
-**Key files created:**
-- `pyproject.toml` - Python dependencies and project configuration
-- `app/models/*.py` - All database models with relationships
-- `app/main.py` - FastAPI application entry point
-- `app/config.py` - Settings management with pydantic-settings
-- `app/database.py` - Async database connection
-- `alembic.ini`, `alembic/env.py`, `alembic/script.py.mako` - Migration setup
-- `docker-compose.yml` - Local development services
-- `.env`, `.env.example` - Environment configuration
-- `.gitignore` - Project exclusions
-- `README.md` - Comprehensive documentation
-
-**Key decisions made:**
-- Used String columns with Enum classes for enum fields (not native Postgres enums) for flexibility
-- Staff identified by phone number via unique constraint on (organization_id, phone_number)
-- All timestamps in UTC (converted to org timezone only for display)
-- Async database operations throughout
-- Hatchling as build backend with explicit package configuration
-
-**Tests passing:** N/A (no tests written yet)
-
-**Verification:**
-- ✅ FastAPI app loads successfully
-- ✅ All models import without errors
-- ✅ Virtual environment created with all dependencies installed
+**Acceptance:** Business owner can set business hours per location.
 
 ---
 
-## In Progress
+## Phase 5: WhatsApp Onboarding Flow
 
-<!-- Current work that's not yet complete -->
+**Goal:** Allow business owners to complete initial setup via WhatsApp conversation.
 
-_No tasks currently in progress._
+### 5.1 Onboarding Conversation Handler
+**Priority:** MEDIUM
+**Files:** `app/services/onboarding.py` (new), `app/ai/prompts.py`
+**Requirements:** 1.1.x
 
----
+- [ ] Create onboarding conversation state machine
+- [ ] Collect: business name, owner name, business type
+- [ ] Collect: services (name, duration, price)
+- [ ] Collect: business hours
+- [ ] Create organization, location, staff (owner), services
+- [ ] Send confirmation when setup complete
+- [ ] Provide link to web dashboard
 
-## Project Setup Checklist
+**Note:** This is for businesses that discover Yume and want to sign up. Currently, orgs must be created via API/admin.
 
-- [x] Project structure initialized
-- [x] pyproject.toml with dependencies
-- [x] Docker Compose (Postgres + Redis) - **Config created, needs Docker installed**
-- [x] SQLAlchemy models for all entities
-- [ ] Initial Alembic migration - **Pending database connection**
-- [x] FastAPI app starts successfully
-- [x] README.md written
+**Acceptance:** New business can set up Yume by messaging Yume's WhatsApp number.
 
-## Core Backend Checklist
+### 5.2 WhatsApp Number Connection
+**Priority:** HIGH (for production)
+**Requirements:** 1.1.5, 6.1.5
 
-- [x] Organization CRUD API
-- [x] ServiceType CRUD API
-- [x] Staff CRUD API (with phone number lookup)
-- [x] Customer CRUD API
-- [x] Appointment CRUD API
-- [x] Availability engine (slot calculation)
-- [ ] Tests for availability edge cases
+Current implementation uses Twilio sandbox. For production:
 
-## WhatsApp Integration Checklist
+- [ ] Set up Twilio phone number
+- [ ] Configure webhook URL in Twilio console
+- [ ] OR: Implement Meta Cloud API with Embedded Signup
+- [ ] Store phone_number_id and access tokens per organization
 
-- [x] Webhook endpoint (POST + GET verification)
-- [x] Message parsing from Meta format
-- [x] WhatsApp API client (send messages) - **Mock mode**
-- [x] Message router (staff vs customer identification)
-- [ ] Embedded Signup flow page
-- [ ] Message templates submitted to Meta
-- [ ] Test with real Meta credentials
-
-## Conversational AI Checklist
-
-- [x] Anthropic client wrapper
-- [x] Message routing (staff vs customer)
-- [x] Customer conversation handler
-- [x] Staff conversation handler
-- [x] Customer tools implemented
-- [x] Staff tools implemented
-- [x] System prompts (Spanish)
-- [x] Conversation state management
-
-## Web App Checklist
-
-- [x] Spot model created
-- [ ] Spot migrations created (pending database)
-- [x] spot_id added to Appointment model
-- [x] Location CRUD API endpoints
-- [x] Spots CRUD API endpoints
-- [ ] Spot conflict detection in scheduling
-- [x] AuthToken model created
-- [x] JWT utilities
-- [x] Auth API endpoints (magic link)
-- [x] Next.js project setup
-- [x] Auth pages (login, verify)
-- [x] Dashboard layout with tabs
-- [x] Schedule tab (calendar + list views)
-- [x] Employees tab
-- [x] Company tab
-
-## Notifications Checklist
-
-- [ ] Celery worker setup
-- [ ] Appointment reminder task
-- [ ] Daily schedule summary task
-- [ ] New booking notification to owner
-
-## Production Readiness Checklist
-
-- [ ] Error handling throughout
-- [ ] Logging configured
-- [ ] Environment variables documented
-- [ ] Deployment configuration
-- [ ] Webhook idempotency
+**Acceptance:** Each business can connect their own WhatsApp number.
 
 ---
 
-## Key Decisions Log
+## Phase 6: Testing & Quality
 
-<!-- Document important decisions made during development -->
+**Goal:** Ensure reliability through comprehensive testing.
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2024-12-27 | Add Web App for business owners | Essential for setup and testing - owners need to manage schedule, employees, and settings |
-| 2024-12-27 | Magic link auth via WhatsApp | Aligns with WhatsApp-native experience, no passwords to remember |
-| 2024-12-27 | Add Spots model with booking constraints | Chairs/tables need to be tracked, can't double-book same spot |
-| 2024-12-27 | Next.js for frontend | App Router, TypeScript, good DX, easy deployment |
-| 2024-12-27 | Frontend in `/frontend` folder | Monorepo approach, shared codebase |
-| 2024-12-26 | Use String columns with Enum value defaults instead of SQLAlchemy native enums | Provides more flexibility, avoids database-level enum types, easier migrations |
-| 2024-12-26 | Staff identification via unique constraint on (organization_id, phone_number) | Enables staff to message the business WhatsApp and be identified automatically |
-| 2024-12-26 | All models use UUID primary keys | Better for distributed systems, no collision risk, harder to enumerate |
-| 2024-12-26 | Async SQLAlchemy with asyncpg driver | Modern async/await pattern, better performance for I/O operations |
-| 2024-12-26 | Hatchling as build backend | Simpler than setuptools, good defaults, widely supported |
+### 6.1 API Integration Tests
+**Priority:** HIGH
+**Files:** `tests/test_api/`
+
+- [ ] Test all organization endpoints
+- [ ] Test all location endpoints
+- [ ] Test all staff endpoints
+- [ ] Test all service endpoints
+- [ ] Test all spot endpoints
+- [ ] Test all appointment endpoints
+- [ ] Test all availability endpoints
+- [ ] Test all auth endpoints
+- [ ] Test admin endpoints
+- [ ] Test webhook endpoint with mock payloads
+
+**Acceptance:** `pytest tests/test_api/` passes with >80% coverage.
+
+### 6.2 AI Conversation Tests
+**Priority:** HIGH
+**Files:** `tests/test_ai/`
+
+- [ ] Test customer booking flow end-to-end
+- [ ] Test customer cancellation flow
+- [ ] Test customer reschedule flow
+- [ ] Test staff schedule viewing
+- [ ] Test staff time blocking
+- [ ] Test staff walk-in booking
+- [ ] Test handoff to human
+- [ ] Test edge cases (no availability, invalid dates)
+
+**Acceptance:** AI conversation flows work correctly with mocked OpenAI.
+
+### 6.3 Frontend Tests
+**Priority:** MEDIUM
+**Files:** `frontend/`
+
+- [ ] Add component tests for critical forms
+- [ ] Add integration tests for auth flow
+- [ ] Add integration tests for appointment CRUD
+- [ ] Test mobile responsiveness
+
+**Acceptance:** Key user flows work correctly in browser.
+
+### 6.4 Load Testing
+**Priority:** LOW
+**Requirement:** 5.4.x
+
+- [ ] Test webhook response time under load
+- [ ] Verify <20 second response time
+- [ ] Test concurrent appointment bookings
+- [ ] Test database query performance
+
+**Acceptance:** System handles expected load without degradation.
 
 ---
 
-## Known Issues / Tech Debt
+## Phase 7: Production Readiness
 
-<!-- Track things that need fixing or improving later -->
+**Goal:** Prepare for deployment and real users.
 
-**Current Issues:**
-- Docker not installed on development machine - need to install Docker Desktop to run Postgres/Redis
-- Initial Alembic migration not created yet - pending database availability
-- Spot conflict detection in scheduling service not yet implemented (model ready, logic pending)
+### 7.1 Security Hardening
+**Priority:** HIGH
+**Requirements:** 5.3.x
 
-**Technical Debt:**
-- Consider adding database indexes for common queries (e.g., appointments by date range, staff by phone)
-- May want to add check constraints for business logic (e.g., appointment end > start)
-- Consider adding audit fields (created_by, updated_by) for tracking
-- Frontend data fetching hooks (`lib/hooks/`) not yet connected to real APIs
-- Frontend forms not yet wired to backend mutations
+- [ ] Change all default passwords/secrets
+- [ ] Verify organization scoping on all queries
+- [ ] Add rate limiting to API
+- [ ] Add rate limiting to webhook
+- [ ] Verify no sensitive data in logs
+- [ ] Review SQL injection prevention
+- [ ] Review XSS prevention in frontend
+- [ ] Add HTTPS enforcement
+- [ ] Add CORS configuration
+
+**Acceptance:** Security checklist complete.
+
+### 7.2 Error Handling
+**Priority:** MEDIUM
+**Requirements:** 5.8.x
+
+- [ ] Add Sentry or equivalent error tracking
+- [ ] Ensure all errors return appropriate HTTP status
+- [ ] Add user-friendly error messages in Spanish
+- [ ] Ensure webhook always returns 200 (prevent Meta retries)
+- [ ] Add graceful degradation when OpenAI unavailable
+- [ ] Add graceful degradation when Twilio unavailable
+
+**Acceptance:** Errors are tracked and handled gracefully.
+
+### 7.3 Deployment Setup
+**Priority:** HIGH
+**Requirements:** 7.3.x
+
+- [ ] Choose hosting provider (Railway, Render, Fly.io)
+- [ ] Set up managed PostgreSQL
+- [ ] Set up managed Redis
+- [ ] Configure environment variables
+- [ ] Set up CI/CD pipeline
+- [ ] Configure domain (api.yume.mx, app.yume.mx)
+- [ ] Set up SSL certificates
+- [ ] Deploy backend
+- [ ] Deploy frontend
+- [ ] Deploy Celery worker
+
+**Acceptance:** System deployed and accessible on production domain.
+
+### 7.4 Monitoring
+**Priority:** MEDIUM
+**Requirements:** 7.4.x
+
+- [ ] Add health check endpoints
+- [ ] Set up uptime monitoring
+- [ ] Set up log aggregation
+- [ ] Create alerting for critical errors
+- [ ] Monitor API response times
+- [ ] Monitor webhook processing times
+
+**Acceptance:** System health is monitored with alerts.
 
 ---
 
-## Environment & Accounts
+## Requirements Coverage Matrix
 
-<!-- Track setup status of external services -->
+This maps PROJECT_SPEC.md requirements to implementation tasks.
 
-- [ ] Meta Developer App created
-- [ ] WhatsApp Business Account set up
-- [ ] Anthropic API key obtained
-- [ ] Hosting provider selected
-- [ ] Database provisioned
-- [ ] Domain configured
+### 1. Business Owner Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 1.1.x | Create account (onboarding) | ❌ Not started | 5.1 |
+| 1.2.1-2 | Location name/address | ✅ Done | 1 |
+| 1.2.3-4 | Business hours | ❌ UI needed | 4.3 |
+| 1.2.5-9 | Services, spots setup | ✅ Done | 1 |
+| 1.3.x | Employee management | ✅ Done | 1 |
+| 1.4.x | Service management | ✅ Done | 1 |
+| 1.5.x | Spot management | ✅ Done | 1 |
+| 1.6.1-8 | View appointments | 🔶 Partial | 2.2 |
+| 1.6.9-20 | Manage appointments | 🔶 Partial | 2.2 |
+| 1.6.21 | New booking notification | ❌ Not started | 3.4 |
+| 1.6.22 | Daily schedule summary | ❌ Not started | 3.3 |
+| 1.7.x | Customer management | 🔶 API done, UI needed | 4.1 |
+| 1.8.x | Availability management | 🔶 API done, UI needed | 4.2 |
+| 1.9.x | Web dashboard access | ✅ Done | 1 |
+| 1.10.x | Business settings | ✅ Done | 1 |
+
+### 2. Employee Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 2.1.x | Employee onboarding | ❌ Not started | 5.1 |
+| 2.2.x | View my schedule | ✅ AI tools done | 2.4 |
+| 2.3.x | View business schedule | ✅ AI tools done | 2.4 |
+| 2.4.x | Manage appointments | ✅ AI tools done | 2.4 |
+| 2.5.x | Manage availability | ✅ AI tools done | 2.4 |
+| 2.6.x | Customer lookup | ✅ AI tools done | 2.4 |
+| 2.7.x | Customer messaging | 🔶 Needs testing | 2.4 |
+
+### 3. Customer Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 3.1.x | Discover & initiate | ✅ Done | 1 |
+| 3.2.x | Book appointment | ✅ AI tools done | 2.3 |
+| 3.3.x | View appointments | ✅ AI tools done | 2.3 |
+| 3.4.x | Modify appointments | ✅ AI tools done | 2.3 |
+| 3.5.1 | Booking confirmation | ✅ Done (in conversation) | 1 |
+| 3.5.2 | 24h reminder | ❌ Not started | 3.2 |
+| 3.5.3-4 | Cancellation/reschedule notification | ❌ Not started | 3.5 |
+| 3.6.x | Get help / handoff | ✅ AI tools done | 1 |
+
+### 4. Admin Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 4.1.x | Admin access | ✅ Done | 1 |
+| 4.2.x | Platform statistics | ✅ Done | 1 |
+| 4.3.x | Manage organizations | ✅ Done | 1 |
+| 4.4.x | Debug conversations | ✅ Done | 1 |
+| 4.5.x | Monitor activity | ✅ Done | 1 |
+| 4.6.x | Perform org actions | ✅ Done (via impersonation) | 1 |
+
+### 5. Non-Functional Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 5.1.x | Spanish/Localization | ✅ Done | 1 |
+| 5.2.x | Timezone handling | ✅ Done | 1 |
+| 5.3.x | Security | 🔶 Partial | 7.1 |
+| 5.4.x | Performance | ❌ Not tested | 6.4 |
+| 5.5.x | Reliability | 🔶 Partial | 3.x |
+| 5.6.x | Data integrity | 🔶 Constraints exist, validation needed | 2.1 |
+| 5.7.x | Mobile experience | ✅ Responsive | 1 |
+| 5.8.x | Error handling | 🔶 Partial | 7.2 |
+
+### 6. Integration Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 6.1.x | WhatsApp API | ✅ Twilio implemented | 1 |
+| 6.2.x | Message templates | ❌ Need Twilio Content setup | 3.x |
+| 6.3.x | AI/LLM | ✅ OpenAI done | 1 |
+| 6.4.x | Background tasks | ❌ Celery not set up | 3.1 |
+
+### 7. Infrastructure Requirements
+
+| Req | Description | Status | Phase |
+|-----|-------------|--------|-------|
+| 7.1.x | Database | ✅ Local, need prod | 7.3 |
+| 7.2.x | Redis | ✅ Local, need prod | 7.3 |
+| 7.3.x | Deployment | ❌ Not deployed | 7.3 |
+| 7.4.x | Monitoring | ❌ Not set up | 7.4 |
+
+---
+
+## Implementation Priority Order
+
+Based on dependencies and business value:
+
+1. **Phase 2.1** - Appointment conflict validation (blocks booking reliability)
+2. **Phase 2.3** - AI tool fixes (blocks WhatsApp booking flow)
+3. **Phase 2.2** - Schedule page completion (blocks dashboard usability)
+4. **Phase 3.1** - Celery setup (blocks all notifications)
+5. **Phase 3.2** - Appointment reminders (high customer value)
+6. **Phase 6.1** - API tests (ensures stability)
+7. **Phase 4.3** - Business hours (needed for accurate availability)
+8. **Phase 3.4** - Booking notifications (owner visibility)
+9. **Phase 4.1** - Customer management UI
+10. **Phase 4.2** - Availability management UI
+11. **Phase 7.1** - Security hardening (before production)
+12. **Phase 7.3** - Deployment
+13. **Phase 5.x** - Onboarding flow (can use manual setup initially)
 
 ---
 
 ## Notes for Next Session
 
-<!-- Leave notes for yourself or Claude about what to do next -->
+- Phase 2 Core (2.1, 2.2, 2.3) and Phase 3 Core (3.1, 3.2) now COMPLETE
+- Next priority: Phase 3.3 (Daily schedule summary) or Phase 3.4 (Booking notifications)
+- To start Celery locally: `celery -A app.tasks.celery_app worker --loglevel=info`
+- To start Celery Beat: `celery -A app.tasks.celery_app beat --loglevel=info`
+- Reminders check every 5 minutes for appointments 24 hours out
+- Create/Edit appointment modals were deferred - most appointments come via WhatsApp
+- Consider using Twilio Content Templates for message templates
 
-**Immediate Next Steps:**
+---
 
-1. **Install Docker Desktop** and start services:
-   ```bash
-   docker compose up -d
-   ```
+## Changelog
 
-2. **Create and run migrations** (includes Spot, AuthToken, and spot_id on Appointment):
-   ```bash
-   source .venv/bin/activate
-   alembic revision --autogenerate -m "Initial schema with all entities"
-   alembic upgrade head
-   ```
-
-3. **Seed test data:**
-   ```bash
-   python scripts/seed_test_data.py
-   ```
-
-4. **Test the full flow:**
-   - Backend: `uvicorn app.main:app --reload` (52 routes)
-   - Frontend: `cd frontend && npm run dev` (http://localhost:3000)
-   - Test magic link auth flow
-   - Test webhook routing with `scripts/test_webhook.py`
-
-5. **Wire up frontend to backend:**
-   - Connect TanStack Query hooks to real API endpoints
-   - Test Schedule, Employees, Company tabs with real data
-
-6. **Add spot conflict detection:**
-   - Update `app/services/scheduling.py` to check spot availability
-   - Prevent double-booking same spot at same time
-
-**Reference Files:**
-- Business context: `docs/PROJECT_SPEC.md`
-- Development patterns: `CLAUDE.md`
-- Testing guide: `TESTING.md`
-- Project overview: `README.md`
-
-**Remember:**
-- Mexican Spanish for all user-facing text
-- All times stored in UTC
-- Staff identified by phone number
-- Incremental identity (customers can exist with just phone number)
-- JWT auth for web app, WhatsApp for magic link delivery
+| Date | Changes |
+|------|---------|
+| 2026-01-06 | Completed Phase 3.1 & 3.2: Celery setup with appointment reminders |
+| 2026-01-06 | Completed Phase 2.2: Schedule page with data fetching, filtering, actions |
+| 2026-01-06 | Completed Phase 2.3: AI tool fixes (6 bugs/improvements) |
+| 2026-01-06 | Completed Phase 2.1: Appointment conflict validation |
+| 2026-01-06 | Initial workplan created from codebase analysis |

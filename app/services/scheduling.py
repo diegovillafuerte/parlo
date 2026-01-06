@@ -111,6 +111,87 @@ async def complete_appointment(
     return appointment
 
 
+async def check_appointment_conflicts(
+    db: AsyncSession,
+    organization_id: UUID,
+    staff_id: UUID | None,
+    spot_id: UUID | None,
+    start_time: datetime,
+    end_time: datetime,
+    exclude_appointment_id: UUID | None = None,
+) -> list[Appointment]:
+    """Check for conflicting appointments.
+
+    Returns a list of appointments that conflict with the proposed time slot.
+    An appointment conflicts if:
+    - It's for the same staff member and times overlap
+    - It's for the same spot and times overlap
+    - It's in PENDING or CONFIRMED status (not cancelled/completed)
+
+    Args:
+        db: Database session
+        organization_id: Organization to check within
+        staff_id: Staff member ID (optional, checks staff conflicts if provided)
+        spot_id: Spot ID (optional, checks spot conflicts if provided)
+        start_time: Proposed appointment start time
+        end_time: Proposed appointment end time
+        exclude_appointment_id: Appointment ID to exclude (for reschedule operations)
+
+    Returns:
+        List of conflicting appointments (empty if no conflicts)
+    """
+    if not staff_id and not spot_id:
+        # Nothing to check conflicts against
+        return []
+
+    # Build overlap condition - three cases:
+    # 1. Existing appointment starts during proposed slot
+    # 2. Existing appointment ends during proposed slot
+    # 3. Existing appointment completely contains proposed slot
+    overlap_condition = or_(
+        # Existing starts during proposed
+        and_(
+            Appointment.scheduled_start >= start_time,
+            Appointment.scheduled_start < end_time,
+        ),
+        # Existing ends during proposed
+        and_(
+            Appointment.scheduled_end > start_time,
+            Appointment.scheduled_end <= end_time,
+        ),
+        # Existing contains proposed
+        and_(
+            Appointment.scheduled_start <= start_time,
+            Appointment.scheduled_end >= end_time,
+        ),
+    )
+
+    # Build resource conflict conditions (staff OR spot)
+    resource_conditions = []
+    if staff_id:
+        resource_conditions.append(Appointment.staff_id == staff_id)
+    if spot_id:
+        resource_conditions.append(Appointment.spot_id == spot_id)
+
+    # Base query
+    query = select(Appointment).where(
+        Appointment.organization_id == organization_id,
+        Appointment.status.in_([
+            AppointmentStatus.PENDING.value,
+            AppointmentStatus.CONFIRMED.value,
+        ]),
+        overlap_condition,
+        or_(*resource_conditions),  # Staff OR spot conflict
+    )
+
+    # Exclude specific appointment (for reschedule)
+    if exclude_appointment_id:
+        query = query.where(Appointment.id != exclude_appointment_id)
+
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
 async def get_available_slots(
     db: AsyncSession,
     organization_id: UUID,

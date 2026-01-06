@@ -60,7 +60,26 @@ async def create_appointment(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Appointment:
     """Create a new appointment."""
-    # TODO: Check for conflicts before creating
+    # Check for conflicts before creating
+    conflicts = await scheduling_service.check_appointment_conflicts(
+        db=db,
+        organization_id=org.id,
+        staff_id=appointment_data.staff_id,
+        spot_id=appointment_data.spot_id,
+        start_time=appointment_data.scheduled_start,
+        end_time=appointment_data.scheduled_end,
+    )
+
+    if conflicts:
+        # Build descriptive error message
+        conflict = conflicts[0]
+        conflict_start = conflict.scheduled_start.strftime("%I:%M %p")
+        conflict_end = conflict.scheduled_end.strftime("%I:%M %p")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ya existe una cita en ese horario ({conflict_start} - {conflict_end}). Por favor selecciona otro horario.",
+        )
+
     # TODO: Validate customer, staff, service exist and belong to org
 
     appointment = await scheduling_service.create_appointment(

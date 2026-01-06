@@ -2,7 +2,7 @@
 
 ## Instructions for Claude Code
 
-You are initializing the codebase for **Yume**, a WhatsApp-native AI scheduling assistant for beauty businesses in Mexico. This document provides complete business and technical context. Your first task is to create the project structure, including a comprehensive README.md that will serve as the source of truth for any engineer or AI agent working on this codebase.
+You are initializing the codebase for **Yume**, a WhatsApp-native AI scheduling assistant for beauty businesses in Mexico (hair and nail saloons, etc.). This document provides complete business and technical context. Your first task is to create the project structure, including a comprehensive README.md that will serve as the source of truth for any engineer or AI agent working on this codebase.
 
 Read this entire document before writing any code. Ask clarifying questions if anything is ambiguous.
 
@@ -72,7 +72,7 @@ Owner discovers Yume (ad, referral, social)
   → Clicks link to WhatsApp
   → Chats with Yume onboarding bot
   → Connects their WhatsApp via Embedded Signup (scans QR code)
-  → Provides business name, services, prices, durations, hours
+  → Provides business name, services, prices, durations, hours, etc.
   → Done—ready to receive bookings
   → Optionally: access web dashboard for richer management
 ```
@@ -187,7 +187,7 @@ Yume differentiators:
 - **ORM:** SQLAlchemy 2.0 (async)
 - **Migrations:** Alembic
 - **Task Queue:** Redis + Celery (for reminders, async jobs)
-- **AI/LLM:** Anthropic Claude API (for conversational AI)
+- **AI/LLM:** OpenAI GPT API (for conversational AI)
 
 **WhatsApp Integration:**
 - **API:** Meta WhatsApp Cloud API (direct integration, no BSP)
@@ -212,20 +212,22 @@ Yume differentiators:
 │                         CORE ENTITIES                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Organization ─────────────── Location                          │
+│  Organization ─────────────── Location ─────────────► Spot      │
+│       │                          │                     │        │
+│       │                          │                     │        │
+│       ▼                          ▼                     ▼        │
+│    Staff ◄──────────────── Appointment ────────► ServiceType    │
 │       │                          │                              │
 │       │                          │                              │
 │       ▼                          ▼                              │
-│    Staff ◄──────────────── Appointment ────────────► Customer   │
-│       │                          │                              │
-│       │                          │                              │
-│       ▼                          ▼                              │
-│  Availability              ServiceType                          │
+│  Availability                Customer                           │
 │                                                                 │
 │                                                                 │
 │  Conversation ─────────────► Message                            │
 │       │                                                         │
-│       └──────────────────► Appointment (optional link)          │
+│       └──────────────────► Customer                             │
+│                                                                 │
+│  AuthToken ──────────────► Organization (magic link auth)       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -377,9 +379,31 @@ Availability:
     # For exceptions: specific date range
     exception_date: date (optional)
     is_available: bool       # false = blocked off
-    
+
     created_at: datetime
     updated_at: datetime
+
+# Spot: Physical service stations (chairs, tables, beds)
+Spot:
+    id: UUID
+    location_id: FK → Location
+    name: str                # "Silla 1", "Mesa de manicure 2"
+    display_order: int       # Order to show in UI
+    is_active: bool
+    service_types: M2M → ServiceType  # Services this spot can handle
+    created_at: datetime
+    updated_at: datetime
+
+    # Appointments reference spots to prevent double-booking
+
+# AuthToken: Magic link tokens for web app authentication
+AuthToken:
+    id: UUID
+    organization_id: FK → Organization
+    token: str               # Random secure token
+    expires_at: datetime
+    is_used: bool
+    created_at: datetime
 ```
 
 ### API Design
@@ -426,6 +450,18 @@ GET    /api/v1/organizations/{org_id}/availability/slots  # Available slots for 
 POST   /api/v1/organizations/{org_id}/availability
 DELETE /api/v1/organizations/{org_id}/availability/{id}
 
+# Spots (physical service stations)
+GET    /api/v1/organizations/{org_id}/locations/{location_id}/spots
+POST   /api/v1/organizations/{org_id}/locations/{location_id}/spots
+GET    /api/v1/organizations/{org_id}/spots/{spot_id}
+PATCH  /api/v1/organizations/{org_id}/spots/{spot_id}
+DELETE /api/v1/organizations/{org_id}/spots/{spot_id}
+PUT    /api/v1/organizations/{org_id}/spots/{spot_id}/services  # Assign services
+
+# Authentication (magic link flow)
+POST   /api/v1/auth/request-magic-link   # Send magic link to WhatsApp
+POST   /api/v1/auth/verify-magic-link    # Verify token, return JWT
+
 # WhatsApp Webhook (Meta calls this)
 POST   /api/v1/webhooks/whatsapp
 GET    /api/v1/webhooks/whatsapp  # Webhook verification
@@ -434,6 +470,17 @@ GET    /api/v1/webhooks/whatsapp  # Webhook verification
 GET    /api/v1/organizations/{org_id}/conversations
 GET    /api/v1/organizations/{org_id}/conversations/{id}
 GET    /api/v1/organizations/{org_id}/conversations/{id}/messages
+
+# Admin Dashboard (platform management)
+POST   /api/v1/admin/auth/login           # Password-based admin login
+GET    /api/v1/admin/stats                # Platform-wide statistics
+GET    /api/v1/admin/organizations        # List orgs with search/filter
+GET    /api/v1/admin/organizations/{org_id}  # Org details with counts
+POST   /api/v1/admin/organizations/{org_id}/impersonate  # Login as org
+PATCH  /api/v1/admin/organizations/{org_id}/status       # Suspend/activate
+GET    /api/v1/admin/conversations        # All conversations across orgs
+GET    /api/v1/admin/conversations/{id}   # Full conversation with messages
+GET    /api/v1/admin/activity             # Activity feed
 ```
 
 ### WhatsApp Integration Details
@@ -524,26 +571,29 @@ GET    /api/v1/organizations/{org_id}/conversations/{id}/messages
 ```python
 # Core conversation handler
 class ConversationHandler:
-    def __init__(self, anthropic_client, organization, customer, conversation):
-        self.client = anthropic_client
+    def __init__(self, openai_client, organization, customer, conversation):
+        self.client = openai_client
         self.org = organization
         self.customer = customer
         self.conversation = conversation
-    
+
     async def process_message(self, message_text: str) -> str:
-        # Build context for Claude
+        # Build context for GPT
         system_prompt = self.build_system_prompt()
         conversation_history = await self.get_conversation_history()
-        
-        # Call Claude with tools
-        response = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+
+        # Call GPT with function calling
+        response = await self.client.chat.completions.create(
+            model="gpt-4.1",
             max_tokens=1024,
-            system=system_prompt,
-            messages=conversation_history + [{"role": "user", "content": message_text}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                *conversation_history,
+                {"role": "user", "content": message_text}
+            ],
             tools=self.get_available_tools()
         )
-        
+
         # Handle tool calls (check availability, book appointment, etc.)
         # Return final response text
 ```
@@ -969,92 +1019,531 @@ ngrok http 8000
 
 ---
 
-## Part 3: Implementation Priorities
+### Yume - Functional Requirements Checklist
 
-### Phase 1: Core Backend (Week 1-2)
+This is the comprehensive list of all functional requirements that the system must satisfy to be production-ready. Each user type has journeys from which specific required functionalities are defined.
 
-1. **Project setup:** Poetry/uv, FastAPI scaffold, Docker Compose
-2. **Database models and migrations:** All core entities including Staff with phone numbers
-3. **Basic CRUD APIs:** Organizations, Services, Customers, Staff, Appointments
-4. **Availability engine:** Calculate available slots given business hours and existing appointments
-5. **Staff identification logic:** Lookup by phone number to distinguish staff from customers
-
-**Deliverable:** API that can create organizations, services, staff, and appointments via REST. Tests passing.
-
-### Phase 2: WhatsApp Integration (Week 3-4)
-
-1. **Meta Cloud API client:** Send messages, receive webhooks
-2. **Webhook handler:** Parse incoming messages, route to conversation handler
-3. **Embedded Signup flow:** Simple web page to initiate Coexistence connection
-4. **Message templates:** Create and submit to Meta for approval
-
-**Deliverable:** Can receive WhatsApp messages via webhook and send responses. Embedded Signup works.
-
-### Phase 3: Conversational AI (Week 5-6)
-
-1. **Anthropic client wrapper:** Handle API calls with retry logic
-2. **Message routing:** Identify staff vs customer by phone number lookup
-3. **Customer conversation handler:** Booking flow with customer tools
-4. **Staff conversation handler:** Schedule management with staff tools
-5. **Tool implementations:** All tools for both customer and staff flows
-6. **System prompt refinement:** Iterate on Spanish natural language quality for both personas
-
-**Deliverable:** Full booking conversation works for customers, full schedule management works for staff, both end-to-end via WhatsApp.
-
-### Phase 4: Notifications & Polish (Week 7-8)
-
-1. **Celery tasks:** Appointment reminders, daily schedule summary
-2. **Onboarding flow completion:** Full 10-minute chat-based setup
-3. **Error handling:** Graceful failures, human handoff
-4. **Basic monitoring:** Logging, error tracking
-
-**Deliverable:** Production-ready MVP for pilot users.
+**How to use this section:**
+- Each requirement has a checkbox `[ ]` - mark `[x]` when implemented and tested
+- Requirements are numbered hierarchically: User.Journey.Functionality
+- UI column indicates where the action must be available: `WA` = WhatsApp, `Web` = Web Dashboard, `Both` = Both
 
 ---
 
-## Part 4: What to Build First
+## 1. Owner of a business that uses the Yume platform
 
-Start with this order:
+The business owner is the primary paying customer. They set up the business, manage employees, and oversee operations.
 
-1. **Create project structure** as specified above
-2. **Write README.md** with business context and technical overview (this is critical for any future engineer or AI agent)
-3. **Set up database models** (start with Organization, ServiceType, Customer, Appointment)
-4. **Implement availability calculation** (this is the core scheduling logic)
-5. **Create basic REST APIs** for appointments
-6. **Add WhatsApp webhook endpoint** (even before full integration, have the endpoint ready)
+### 1.1 Create an account for my business
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.1.1 | Send a WhatsApp message to Yume's onboarding number to get started | WA | [ ] |
+| 1.1.2 | Conversationally provide business name during onboarding | WA | [ ] |
+| 1.1.3 | Conversationally provide business type/category (barbershop, salon, spa, etc.) | WA | [ ] |
+| 1.1.4 | Conversationally provide owner's name | WA | [ ] |
+| 1.1.5 | Connect existing WhatsApp Business number via Embedded Signup (scan QR) | Web | [ ] |
+| 1.1.6 | Receive confirmation that WhatsApp is connected and ready | WA | [ ] |
+| 1.1.7 | Set timezone for the business (default: America/Mexico_City) | Both | [ ] |
+| 1.1.8 | Complete initial setup in under 10 minutes | WA | [ ] |
 
-Do NOT start with:
-- Frontend (we don't need it for MVP)
-- Complex analytics
-- Multi-location support (v2)
-- Payments (future)
+### 1.2 Set up my business location
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.2.1 | Add location name | Both | [ ] |
+| 1.2.2 | Add location address (optional) | Both | [ ] |
+| 1.2.3 | Set business hours for each day of the week | Both | [ ] |
+| 1.2.4 | Mark certain days as closed | Both | [ ] |
+| 1.2.5 | Set up services offered (name, duration, price) | Both | [ ] |
+| 1.2.6 | Add service descriptions (optional) | Both | [ ] |
+| 1.2.7 | Set up spots/stations (chairs, tables, beds) | Web | [ ] |
+| 1.2.8 | Associate spots with services they can provide | Web | [ ] |
+| 1.2.9 | View summary of business setup | Both | [ ] |
+
+### 1.3 Manage employees
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.3.1 | Add a new employee with name | Both | [ ] |
+| 1.3.2 | Add employee's WhatsApp phone number | Both | [ ] |
+| 1.3.3 | Assign services the employee can perform | Both | [ ] |
+| 1.3.4 | Assign default spot/station for the employee | Web | [ ] |
+| 1.3.5 | Set employee's working hours/schedule | Both | [ ] |
+| 1.3.6 | Send onboarding WhatsApp to new employee | WA | [ ] |
+| 1.3.7 | View list of all employees | Both | [ ] |
+| 1.3.8 | Edit employee details | Both | [ ] |
+| 1.3.9 | Deactivate/remove an employee | Both | [ ] |
+| 1.3.10 | Reactivate a previously deactivated employee | Web | [ ] |
+
+### 1.4 Manage services
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.4.1 | Add a new service type | Both | [ ] |
+| 1.4.2 | Set service name | Both | [ ] |
+| 1.4.3 | Set service duration (minutes) | Both | [ ] |
+| 1.4.4 | Set service price (MXN) | Both | [ ] |
+| 1.4.5 | Set service description (optional) | Both | [ ] |
+| 1.4.6 | Edit existing service | Both | [ ] |
+| 1.4.7 | Deactivate a service (hide from booking) | Both | [ ] |
+| 1.4.8 | Delete a service that has no appointments | Web | [ ] |
+| 1.4.9 | View all services with their details | Both | [ ] |
+
+### 1.5 Manage spots/stations
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.5.1 | Add a new spot (chair, table, bed, etc.) | Web | [ ] |
+| 1.5.2 | Set spot name | Web | [ ] |
+| 1.5.3 | Associate spot with services it can provide | Web | [ ] |
+| 1.5.4 | Set spot display order | Web | [ ] |
+| 1.5.5 | Edit spot details | Web | [ ] |
+| 1.5.6 | Deactivate a spot | Web | [ ] |
+| 1.5.7 | Delete a spot with no appointments | Web | [ ] |
+| 1.5.8 | View all spots in a location | Web | [ ] |
+
+### 1.6 View and manage appointments
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.6.1 | View today's appointments | Both | [ ] |
+| 1.6.2 | View appointments for a specific date | Both | [ ] |
+| 1.6.3 | View appointments for a date range | Web | [ ] |
+| 1.6.4 | View appointments in calendar format | Web | [ ] |
+| 1.6.5 | View appointments in list format | Both | [ ] |
+| 1.6.6 | Filter appointments by employee | Web | [ ] |
+| 1.6.7 | Filter appointments by service | Web | [ ] |
+| 1.6.8 | Filter appointments by status (pending, confirmed, completed, cancelled, no-show) | Web | [ ] |
+| 1.6.9 | Create a new appointment manually | Both | [ ] |
+| 1.6.10 | Select customer for appointment (existing or new) | Both | [ ] |
+| 1.6.11 | Select service for appointment | Both | [ ] |
+| 1.6.12 | Select employee for appointment | Both | [ ] |
+| 1.6.13 | Select spot for appointment | Web | [ ] |
+| 1.6.14 | Select date and time for appointment | Both | [ ] |
+| 1.6.15 | Add notes to appointment | Both | [ ] |
+| 1.6.16 | Edit appointment details | Both | [ ] |
+| 1.6.17 | Cancel an appointment | Both | [ ] |
+| 1.6.18 | Mark appointment as completed | Both | [ ] |
+| 1.6.19 | Mark appointment as no-show | Both | [ ] |
+| 1.6.20 | Register a walk-in customer | Both | [ ] |
+| 1.6.21 | Receive notification when new appointment is booked | WA | [ ] |
+| 1.6.22 | Receive daily schedule summary | WA | [ ] |
+
+### 1.7 Manage customers
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.7.1 | View list of all customers | Both | [ ] |
+| 1.7.2 | Search customers by name or phone | Both | [ ] |
+| 1.7.3 | View customer details (name, phone, notes) | Both | [ ] |
+| 1.7.4 | View customer appointment history | Both | [ ] |
+| 1.7.5 | Edit customer details | Both | [ ] |
+| 1.7.6 | Add notes to customer profile | Both | [ ] |
+| 1.7.7 | Send message to customer | WA | [ ] |
+
+### 1.8 Manage availability and exceptions
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.8.1 | Block time for all employees (holiday closure) | Both | [ ] |
+| 1.8.2 | Block time for specific employee | Both | [ ] |
+| 1.8.3 | Set recurring availability for employees | Web | [ ] |
+| 1.8.4 | Add one-time availability exception | Both | [ ] |
+| 1.8.5 | Remove availability block | Both | [ ] |
+| 1.8.6 | View all blocked times | Web | [ ] |
+
+### 1.9 Access web dashboard
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.9.1 | Request magic link via WhatsApp | WA | [ ] |
+| 1.9.2 | Receive magic link in WhatsApp | WA | [ ] |
+| 1.9.3 | Click magic link to access dashboard | Web | [ ] |
+| 1.9.4 | Stay logged in for 7 days | Web | [ ] |
+| 1.9.5 | Log out of dashboard | Web | [ ] |
+| 1.9.6 | Switch between locations (multi-location) | Web | [ ] |
+
+### 1.10 Manage business settings
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 1.10.1 | View business/organization details | Both | [ ] |
+| 1.10.2 | Edit business name | Both | [ ] |
+| 1.10.3 | Edit timezone | Web | [ ] |
+| 1.10.4 | View WhatsApp connection status | Web | [ ] |
+| 1.10.5 | Reconnect WhatsApp if disconnected | Web | [ ] |
+| 1.10.6 | View account/billing status | Web | [ ] |
 
 ---
 
-## Part 5: Key Decisions Already Made
+## 2. Employee of a business that uses the Yume platform
 
-These are settled—don't revisit:
+Employees interact exclusively via WhatsApp to manage their schedule and handle walk-ins.
 
-1. **WhatsApp Cloud API direct, not via Twilio** — Cost savings, same functionality
-2. **Coexistence feature** — Business keeps their existing number
-3. **Spanish (Mexican) only for v1** — Don't internationalize yet
-4. **Single location per org for v1** — Multi-location is v2
-5. **PostgreSQL** — The right choice for relational data with JSONB flexibility
-6. **FastAPI + Pydantic** — Type safety and auto-docs
-7. **Claude for AI** — Best for nuanced Spanish conversation
-8. **Staff interact via same WhatsApp number** — One number for everything, staff identified by phone number lookup
-9. **No separate staff app for v1** — Staff use WhatsApp, dashboard can come later
+### 2.1 Get onboarded as an employee
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.1.1 | Receive WhatsApp message from Yume with welcome and instructions | WA | [ ] |
+| 2.1.2 | Confirm identity/acceptance via WhatsApp response | WA | [ ] |
+| 2.1.3 | Understand what Yume can do (brief tutorial) | WA | [ ] |
+
+### 2.2 View my schedule
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.2.1 | Ask "what do I have today" and see today's appointments | WA | [ ] |
+| 2.2.2 | Ask for schedule on a specific date | WA | [ ] |
+| 2.2.3 | Ask "what's next" to see next upcoming appointment | WA | [ ] |
+| 2.2.4 | See appointment details: time, service, customer name | WA | [ ] |
+| 2.2.5 | See blocked times in schedule | WA | [ ] |
+
+### 2.3 View business schedule
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.3.1 | Ask for full business schedule if permitted | WA | [ ] |
+| 2.3.2 | See all employees' appointments for a date | WA | [ ] |
+
+### 2.4 Manage my appointments
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.4.1 | Mark appointment as completed | WA | [ ] |
+| 2.4.2 | Mark appointment as no-show | WA | [ ] |
+| 2.4.3 | Cancel an appointment | WA | [ ] |
+| 2.4.4 | Optionally notify customer when cancelling | WA | [ ] |
+| 2.4.5 | Book a walk-in customer | WA | [ ] |
+| 2.4.6 | Specify service for walk-in | WA | [ ] |
+| 2.4.7 | Optionally capture walk-in customer phone | WA | [ ] |
+| 2.4.8 | Optionally capture walk-in customer name | WA | [ ] |
+
+### 2.5 Manage my availability
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.5.1 | Block personal time (lunch, break, etc.) | WA | [ ] |
+| 2.5.2 | Specify start and end time for block | WA | [ ] |
+| 2.5.3 | Optionally specify reason for block | WA | [ ] |
+| 2.5.4 | Remove a previously created block | WA | [ ] |
+| 2.5.5 | Block time for future dates | WA | [ ] |
+
+### 2.6 Look up customer information
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.6.1 | Ask about customer history by phone number | WA | [ ] |
+| 2.6.2 | See customer's previous appointments | WA | [ ] |
+| 2.6.3 | See customer's name if known | WA | [ ] |
+
+### 2.7 Communicate with customers
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 2.7.1 | Ask Yume to send message to customer | WA | [ ] |
+| 2.7.2 | Specify customer by phone or by recent appointment | WA | [ ] |
+| 2.7.3 | Compose custom message to send | WA | [ ] |
 
 ---
 
-## Part 6: Open Questions (Decide as you build)
+## 3. Client (customer) of a business that uses the Yume platform
 
-1. **Hosting choice:** Railway vs Render vs Fly.io — pick based on ease of setup
-2. **Celery vs alternatives:** Could use APScheduler or ARQ if simpler
-3. **Testing strategy:** Pytest, but decide on fixtures and mocking approach
-4. **Logging/monitoring:** Structlog? Logfire? Basic logging to start is fine.
+Clients interact exclusively via WhatsApp. They have no web interface.
+
+### 3.1 Discover and initiate contact
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 3.1.1 | Send any WhatsApp message to business number to start | WA | [ ] |
+| 3.1.2 | Receive friendly greeting in Mexican Spanish | WA | [ ] |
+| 3.1.3 | Understand what services are available | WA | [ ] |
+
+### 3.2 Book an appointment
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 3.2.1 | Express intent to book (in natural language) | WA | [ ] |
+| 3.2.2 | Be asked which service they want | WA | [ ] |
+| 3.2.3 | Select from available services | WA | [ ] |
+| 3.2.4 | Be asked when they want the appointment | WA | [ ] |
+| 3.2.5 | Specify preferred date/time (natural language: "mañana en la tarde") | WA | [ ] |
+| 3.2.6 | See available time slots for requested period | WA | [ ] |
+| 3.2.7 | Select a time slot | WA | [ ] |
+| 3.2.8 | Optionally request specific employee | WA | [ ] |
+| 3.2.9 | Provide name if not already known | WA | [ ] |
+| 3.2.10 | Receive confirmation with all appointment details | WA | [ ] |
+| 3.2.11 | Booking confirmed in under 2 minutes | WA | [ ] |
+
+### 3.3 View my appointments
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 3.3.1 | Ask about upcoming appointments | WA | [ ] |
+| 3.3.2 | See list of upcoming appointments with details | WA | [ ] |
+| 3.3.3 | See appointment date, time, service, and price | WA | [ ] |
+
+### 3.4 Modify my appointments
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 3.4.1 | Express intent to cancel | WA | [ ] |
+| 3.4.2 | See which appointment(s) can be cancelled | WA | [ ] |
+| 3.4.3 | Confirm cancellation | WA | [ ] |
+| 3.4.4 | Receive cancellation confirmation | WA | [ ] |
+| 3.4.5 | Express intent to reschedule | WA | [ ] |
+| 3.4.6 | See available alternative times | WA | [ ] |
+| 3.4.7 | Select new time | WA | [ ] |
+| 3.4.8 | Receive reschedule confirmation | WA | [ ] |
+
+### 3.5 Receive notifications
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 3.5.1 | Receive booking confirmation message | WA | [ ] |
+| 3.5.2 | Receive reminder 24 hours before appointment | WA | [ ] |
+| 3.5.3 | Receive notification if appointment is cancelled by business | WA | [ ] |
+| 3.5.4 | Receive notification if appointment is rescheduled by business | WA | [ ] |
+
+### 3.6 Get help
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 3.6.1 | Ask questions about services or prices | WA | [ ] |
+| 3.6.2 | Request to speak with human (handoff) | WA | [ ] |
+| 3.6.3 | Be transferred to business owner when AI cannot help | WA | [ ] |
+| 3.6.4 | Business owner receives notification of handoff | WA | [ ] |
 
 ---
+
+## 4. Yume admin user
+
+Platform administrators manage all organizations and debug issues.
+
+### 4.1 Access admin dashboard
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 4.1.1 | Login with admin password | Web | [ ] |
+| 4.1.2 | Password-based authentication (separate from org auth) | Web | [ ] |
+| 4.1.3 | Stay logged in with admin session | Web | [ ] |
+| 4.1.4 | Log out of admin dashboard | Web | [ ] |
+
+### 4.2 View platform statistics
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 4.2.1 | See total number of organizations | Web | [ ] |
+| 4.2.2 | See total number of appointments | Web | [ ] |
+| 4.2.3 | See total number of customers | Web | [ ] |
+| 4.2.4 | See total number of messages | Web | [ ] |
+| 4.2.5 | See organizations by status (active, onboarding, suspended) | Web | [ ] |
+
+### 4.3 Manage organizations
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 4.3.1 | View list of all organizations | Web | [ ] |
+| 4.3.2 | Search organizations by name | Web | [ ] |
+| 4.3.3 | Filter organizations by status | Web | [ ] |
+| 4.3.4 | View organization details | Web | [ ] |
+| 4.3.5 | View organization's locations | Web | [ ] |
+| 4.3.6 | View organization's staff count | Web | [ ] |
+| 4.3.7 | View organization's customer count | Web | [ ] |
+| 4.3.8 | View organization's appointment count | Web | [ ] |
+| 4.3.9 | Suspend an organization (block login) | Web | [ ] |
+| 4.3.10 | Reactivate a suspended organization | Web | [ ] |
+| 4.3.11 | "Login As" - impersonate any organization | Web | [ ] |
+| 4.3.12 | Impersonation opens new tab with org dashboard | Web | [ ] |
+
+### 4.4 Debug AI conversations
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 4.4.1 | View all WhatsApp conversations across platform | Web | [ ] |
+| 4.4.2 | Filter conversations by organization | Web | [ ] |
+| 4.4.3 | View conversation message history | Web | [ ] |
+| 4.4.4 | See message sender type (Customer, AI, Staff) | Web | [ ] |
+| 4.4.5 | See message timestamps | Web | [ ] |
+| 4.4.6 | Conversations grouped by date | Web | [ ] |
+
+### 4.5 Monitor platform activity
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 4.5.1 | View activity feed of recent events | Web | [ ] |
+| 4.5.2 | See recent organization signups | Web | [ ] |
+| 4.5.3 | See appointment status changes | Web | [ ] |
+| 4.5.4 | Click activity to view related organization | Web | [ ] |
+
+### 4.6 Perform any organization action
+| # | Requirement | UI | Status |
+|---|-------------|----|----|
+| 4.6.1 | Edit any organization's settings | Web | [ ] |
+| 4.6.2 | Edit any organization's services | Web | [ ] |
+| 4.6.3 | Edit any organization's employees | Web | [ ] |
+| 4.6.4 | Edit any organization's appointments | Web | [ ] |
+| 4.6.5 | Edit any organization's customers | Web | [ ] |
+
+---
+
+## 5. Non-Functional Requirements
+
+These requirements apply to the entire system.
+
+### 5.1 Language and Localization
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.1.1 | All AI responses in natural Mexican Spanish | [ ] |
+| 5.1.2 | Use informal "tú" form (not "usted") | [ ] |
+| 5.1.3 | Currency displayed in MXN (Mexican pesos) | [ ] |
+| 5.1.4 | Prices formatted as "$150" (not "150 MXN") | [ ] |
+| 5.1.5 | Dates in Spanish format: "viernes 15 de enero" | [ ] |
+| 5.1.6 | Times in 12-hour format with AM/PM: "3:00 PM" | [ ] |
+| 5.1.7 | No English words in user-facing text | [ ] |
+
+### 5.2 Time and Timezone Handling
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.2.1 | All times stored in UTC in database | [ ] |
+| 5.2.2 | Times displayed in organization's timezone | [ ] |
+| 5.2.3 | Default timezone: America/Mexico_City | [ ] |
+| 5.2.4 | Natural language date parsing ("mañana", "el lunes", "la próxima semana") | [ ] |
+| 5.2.5 | Correct handling of DST transitions | [ ] |
+
+### 5.3 Security
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.3.1 | Organization data is isolated (no cross-org access) | [ ] |
+| 5.3.2 | JWT tokens expire appropriately (7 days for web, shorter for admin) | [ ] |
+| 5.3.3 | Magic link tokens single-use and expire in 15 minutes | [ ] |
+| 5.3.4 | Admin password is configurable via environment variable | [ ] |
+| 5.3.5 | No sensitive data (API keys, passwords) in logs | [ ] |
+| 5.3.6 | SQL injection prevention (use ORM, no raw queries) | [ ] |
+| 5.3.7 | XSS prevention in web dashboard | [ ] |
+| 5.3.8 | Suspended organizations cannot login | [ ] |
+| 5.3.9 | WhatsApp webhook validates sender identity | [ ] |
+
+### 5.4 Performance
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.4.1 | WhatsApp webhook responds within 20 seconds | [ ] |
+| 5.4.2 | AI response generated within 15 seconds | [ ] |
+| 5.4.3 | Availability slot calculation handles 30-day range | [ ] |
+| 5.4.4 | Dashboard pages load within 3 seconds | [ ] |
+| 5.4.5 | API endpoints respond within 500ms (non-AI) | [ ] |
+
+### 5.5 Reliability
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.5.1 | Webhook idempotency (handle duplicate deliveries) | [ ] |
+| 5.5.2 | Message deduplication by WhatsApp message_id | [ ] |
+| 5.5.3 | Graceful degradation when AI API is unavailable | [ ] |
+| 5.5.4 | Graceful degradation when WhatsApp API is unavailable | [ ] |
+| 5.5.5 | Database connection pooling and retry logic | [ ] |
+| 5.5.6 | Background task retry on failure (reminders, notifications) | [ ] |
+
+### 5.6 Data Integrity
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.6.1 | Appointments cannot overlap for same staff | [ ] |
+| 5.6.2 | Appointments cannot overlap for same spot | [ ] |
+| 5.6.3 | Cannot delete location if it's the only one | [ ] |
+| 5.6.4 | Cannot delete service with existing appointments | [ ] |
+| 5.6.5 | Cascade deletes handled properly (org → locations → spots) | [ ] |
+| 5.6.6 | Unique constraint on (organization_id, staff phone_number) | [ ] |
+| 5.6.7 | Unique constraint on (organization_id, customer phone_number) | [ ] |
+
+### 5.7 Mobile Experience
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.7.1 | Web dashboard is mobile-responsive | [ ] |
+| 5.7.2 | Login page works on mobile browsers | [ ] |
+| 5.7.3 | Calendar view adapts to mobile screens | [ ] |
+| 5.7.4 | Forms are usable on touch devices | [ ] |
+
+### 5.8 Error Handling
+| # | Requirement | Status |
+|---|-------------|--------|
+| 5.8.1 | API returns appropriate HTTP status codes | [ ] |
+| 5.8.2 | Error messages are user-friendly in Spanish | [ ] |
+| 5.8.3 | AI handles unknown intents gracefully | [ ] |
+| 5.8.4 | AI offers handoff when stuck in conversation | [ ] |
+| 5.8.5 | Failed webhook returns 200 to prevent Meta retries for permanent errors | [ ] |
+
+---
+
+## 6. Integration Requirements
+
+### 6.1 WhatsApp Cloud API (Meta)
+| # | Requirement | Status |
+|---|-------------|--------|
+| 6.1.1 | Webhook endpoint for receiving messages (POST) | [ ] |
+| 6.1.2 | Webhook verification endpoint (GET) | [ ] |
+| 6.1.3 | Send text messages via Cloud API | [ ] |
+| 6.1.4 | Send template messages via Cloud API | [ ] |
+| 6.1.5 | Embedded Signup flow for connecting business numbers | [ ] |
+| 6.1.6 | Store phone_number_id and waba_id after signup | [ ] |
+| 6.1.7 | Handle message status updates (sent, delivered, read) | [ ] |
+| 6.1.8 | Mock mode for local development without Meta credentials | [ ] |
+
+### 6.2 Message Templates (Meta Approved)
+| # | Requirement | Status |
+|---|-------------|--------|
+| 6.2.1 | appointment_confirmation template created | [ ] |
+| 6.2.2 | appointment_reminder template created | [ ] |
+| 6.2.3 | appointment_cancelled template created | [ ] |
+| 6.2.4 | employee_welcome template created | [ ] |
+| 6.2.5 | magic_link template created | [ ] |
+| 6.2.6 | All templates approved by Meta | [ ] |
+
+### 6.3 AI/LLM Integration
+| # | Requirement | Status |
+|---|-------------|--------|
+| 6.3.1 | OpenAI GPT API client implemented | [ ] |
+| 6.3.2 | Tool calling for booking operations | [ ] |
+| 6.3.3 | Separate tool sets for customer vs staff | [ ] |
+| 6.3.4 | System prompts in Mexican Spanish | [ ] |
+| 6.3.5 | Conversation history management | [ ] |
+| 6.3.6 | Context injection (services, hours, customer history) | [ ] |
+| 6.3.7 | Fallback when API key not configured | [ ] |
+| 6.3.8 | Tool execution loop (AI → tool → AI → response) | [ ] |
+
+### 6.4 Background Tasks (Celery)
+| # | Requirement | Status |
+|---|-------------|--------|
+| 6.4.1 | Celery worker configuration | [ ] |
+| 6.4.2 | Redis as message broker | [ ] |
+| 6.4.3 | Appointment reminder task (24h before) | [ ] |
+| 6.4.4 | Daily schedule summary task | [ ] |
+| 6.4.5 | Task retry on failure | [ ] |
+| 6.4.6 | Task monitoring/visibility | [ ] |
+
+---
+
+## 7. Infrastructure Requirements
+
+### 7.1 Database
+| # | Requirement | Status |
+|---|-------------|--------|
+| 7.1.1 | PostgreSQL 15+ deployed | [ ] |
+| 7.1.2 | Alembic migrations working | [ ] |
+| 7.1.3 | All entity migrations created | [ ] |
+| 7.1.4 | Indexes on frequently queried fields | [ ] |
+| 7.1.5 | Database backups configured | [ ] |
+
+### 7.2 Redis
+| # | Requirement | Status |
+|---|-------------|--------|
+| 7.2.1 | Redis deployed for Celery broker | [ ] |
+| 7.2.2 | Redis connection handling | [ ] |
+
+### 7.3 Deployment
+| # | Requirement | Status |
+|---|-------------|--------|
+| 7.3.1 | Backend deployed and accessible | [ ] |
+| 7.3.2 | Frontend deployed and accessible | [ ] |
+| 7.3.3 | HTTPS configured | [ ] |
+| 7.3.4 | Domain configured (api.yume.mx, app.yume.mx) | [ ] |
+| 7.3.5 | Environment variables configured | [ ] |
+| 7.3.6 | Celery worker running | [ ] |
+
+### 7.4 Monitoring
+| # | Requirement | Status |
+|---|-------------|--------|
+| 7.4.1 | Application logs accessible | [ ] |
+| 7.4.2 | Error tracking (Sentry or equivalent) | [ ] |
+| 7.4.3 | Health check endpoint | [ ] |
+| 7.4.4 | Uptime monitoring | [ ] |
+
+---
+
+## How to Mark Progress
+
+When implementing a requirement:
+1. Test the feature thoroughly
+2. Mark the checkbox as `[x]`
+3. Add date and notes if needed in commit message
+4. Update workplan.md with completed tasks
+
+**Production Readiness Criteria:**
+- All requirements marked `[x]`
+- All tests passing
+- No critical bugs in known issues
+- Successfully tested with real WhatsApp messages
+- At least one business owner has completed full journey
 
 ## Appendix: Example Conversations
 
