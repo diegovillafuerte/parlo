@@ -237,6 +237,43 @@ Every query must filter by `organization_id` to prevent data leakage.
 1. Verify backend loads, frontend builds
 2. Update `workplan.md` with completed tasks
 
+## Railway Deployment Notes
+
+**Key learnings from deployment (avoid these mistakes):**
+
+### Backend (FastAPI/Python)
+1. **DATABASE_URL format**: Railway provides `postgresql://...` but SQLAlchemy async needs `postgresql+asyncpg://...` - must add `+asyncpg` manually
+2. **Use start.sh script**: Chaining commands with `&&` in Dockerfile CMD can fail silently. Use a bash script with `set -e` and explicit logging
+3. **All env vars required**: Missing `REDIS_URL`, `OPENAI_API_KEY`, `JWT_SECRET_KEY` will crash silently - no error in logs
+4. **pip install**: Use `pip install .` not `pip install -e .` in Docker (editable mode needs source)
+
+### Frontend (Next.js)
+1. **Use Nixpacks, not Dockerfile**: Railway's auto-detection works better for Next.js. Remove `Dockerfile`, `railway.json` from frontend and let Railpack handle it
+2. **Root directory setting**: Must set to `frontend` in Railway UI for monorepo
+3. **Next.js 16**: Doesn't support `eslint` key in next.config.ts - remove it
+4. **Builder caching**: Railway caches aggressively. If wrong Dockerfile is used, delete service and recreate
+
+### Monorepo Issues
+1. **Root railway.json conflicts**: Can interfere with subdirectory services - rename to `railway.backend.json` or delete
+2. **.gitignore `lib/` trap**: Using `lib/` ignores `frontend/src/lib/`. Use `/lib/` (with leading slash) to only match root level
+3. **Separate services**: Deploy backend and frontend as separate Railway services from same repo
+
+### Environment Variables (Backend)
+```
+DATABASE_URL=postgresql+asyncpg://...  # Note: +asyncpg required!
+REDIS_URL=redis://...
+OPENAI_API_KEY=sk-...
+JWT_SECRET_KEY=<generate>
+ADMIN_MASTER_PASSWORD=<generate>
+FRONTEND_URL=https://frontend-url.railway.app
+APP_ENV=production
+```
+
+### Environment Variables (Frontend)
+```
+NEXT_PUBLIC_API_URL=https://backend-url.railway.app/api/v1
+```
+
 ## References
 
 - **Requirements:** `docs/PROJECT_SPEC.md` (source of truth)
