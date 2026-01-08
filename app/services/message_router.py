@@ -4,19 +4,21 @@ This module routes incoming WhatsApp messages to the correct handler based on
 whether the sender is a registered staff member or a customer.
 
 Critical Flow:
-1. Message arrives from WhatsApp (Yume's main number)
-2. Check if sender is a registered staff member of any organization
+1. Message arrives from WhatsApp
+2. Check if phone_number_id matches a business's WhatsApp number
+   - If yes → Route to that org's customer/staff handler
+3. Check if sender is a registered staff member of any organization
    - If yes → Route to staff handler for that org
-3. Check if sender has an existing organization as customer
+4. Check if sender has an existing organization as customer
    - If yes → Route to customer handler for that org
-4. Check if sender is in onboarding process
+5. Check if sender is in onboarding process
    - If yes → Continue onboarding
-5. Otherwise → Start new business onboarding
+6. Otherwise → Start new business onboarding
 
-This is what enables ONE WhatsApp number to serve multiple experiences:
-- Business owners onboarding
-- Staff managing their schedule
-- Customers booking appointments
+This enables:
+- Business owners onboarding via Yume's main number
+- Staff managing their schedule via Yume's main number
+- Customers booking appointments via business's own WhatsApp number
 """
 
 import logging
@@ -92,7 +94,7 @@ class MessageRouter:
             f"\n{'='*80}\n"
             f"📨 INCOMING MESSAGE\n"
             f"{'='*80}\n"
-            f"  Yume Number: {phone_number_id}\n"
+            f"  WhatsApp Number ID: {phone_number_id}\n"
             f"  Sender: {sender_phone} ({sender_name or 'Unknown'})\n"
             f"  Message ID: {message_id}\n"
             f"  Content: {message_content}\n"
@@ -104,7 +106,27 @@ class MessageRouter:
             logger.warning(f"⚠️  Message {message_id} already processed - skipping")
             return {"status": "duplicate", "message_id": message_id}
 
-        # Step 2: Check if sender is a STAFF member of any organization
+        # Step 2: Check if this is a BUSINESS WhatsApp number (not Yume's main number)
+        business_org = await self._find_org_by_whatsapp_phone_id(phone_number_id)
+        if business_org:
+            # This message came to a business's own WhatsApp number
+            # Route as customer message for that specific organization
+            logger.info(
+                f"\n🏢 ROUTING DECISION: BUSINESS WHATSAPP\n"
+                f"   Organization: {business_org.name}\n"
+                f"   Phone Number ID: {phone_number_id}\n"
+                f"   → Routing to business-specific handler"
+            )
+            return await self._handle_business_whatsapp_message(
+                org=business_org,
+                phone_number_id=phone_number_id,
+                sender_phone=sender_phone,
+                sender_name=sender_name,
+                message_id=message_id,
+                message_content=message_content,
+            )
+
+        # Step 3: Check if sender is a STAFF member of any organization
         staff, org = await self._find_staff_and_org(sender_phone)
 
         if staff and staff.is_active and org:
@@ -191,6 +213,27 @@ class MessageRouter:
             "route": "onboarding",
         }
 
+    async def _find_org_by_whatsapp_phone_id(
+        self, phone_number_id: str
+    ) -> Organization | None:
+        """Find organization by their WhatsApp Business phone number ID.
+
+        This is used when a message arrives on a business's own WhatsApp number
+        (not Yume's main number).
+
+        Args:
+            phone_number_id: Meta's phone number ID for the business
+
+        Returns:
+            Organization or None
+        """
+        result = await self.db.execute(
+            select(Organization).where(
+                Organization.whatsapp_phone_number_id == phone_number_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def _find_staff_and_org(
         self, phone_number: str
     ) -> tuple[Staff | None, Organization | None]:
@@ -235,6 +278,82 @@ class MessageRouter:
         if row:
             return row[0], row[1]
         return None, None
+
+    async def _handle_business_whatsapp_message(
+        self,
+        org: Organization,
+        phone_number_id: str,
+        sender_phone: str,
+        sender_name: str | None,
+        message_id: str,
+        message_content: str,
+    ) -> dict[str, str]:
+        """Handle message from a business's own WhatsApp number.
+
+        When a customer messages a business's WhatsApp number directly (not Yume's
+        main number), we route them to that specific business.
+
+        Args:
+            org: The organization that owns this WhatsApp number
+            phone_number_id: Meta's phone number ID
+            sender_phone: Sender's phone number
+            sender_name: Sender's name from WhatsApp profile
+            message_id: WhatsApp message ID
+            message_content: The message text
+
+        Returns:
+            Dict with routing decision and status
+        """
+        # Check if sender is staff of this org
+        staff = await staff_service.get_staff_by_phone(self.db, org.id, sender_phone)
+        if staff and staff.is_active:
+            logger.info(f"   Staff member {staff.name} messaging on business WhatsApp")
+            response_text = await self._handle_staff_message(
+                org, staff, message_content, sender_phone, message_id
+            )
+            sender_type = MessageSenderType.STAFF
+        else:
+            # Treat as customer - get or create customer for this org
+            customer = await customer_service.get_or_create_customer(
+                self.db,
+                org.id,
+                sender_phone,
+                name=sender_name,
+            )
+            logger.info(f"   Customer {customer.name or sender_phone} messaging business")
+            response_text = await self._handle_customer_message(
+                org, customer, message_content, sender_phone, message_id
+            )
+            sender_type = MessageSenderType.CUSTOMER
+
+        # Send response using the business's own WhatsApp number
+        await self.whatsapp.send_text_message(
+            phone_number_id=phone_number_id,
+            to=sender_phone,
+            message=response_text,
+            org_access_token=self._get_org_access_token(org),
+        )
+
+        await self.db.commit()
+        return {
+            "status": "success",
+            "sender_type": sender_type.value,
+            "organization_id": str(org.id),
+            "route": "business_whatsapp",
+        }
+
+    def _get_org_access_token(self, org: Organization) -> str | None:
+        """Get the WhatsApp access token for an organization.
+
+        Args:
+            org: Organization
+
+        Returns:
+            Access token or None if using Yume's main number
+        """
+        if org.settings and isinstance(org.settings, dict):
+            return org.settings.get("whatsapp_access_token")
+        return None
 
     async def _handle_onboarding_message(
         self,
