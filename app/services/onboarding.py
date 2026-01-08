@@ -52,6 +52,9 @@ DEFAULT_BUSINESS_HOURS = {
 }
 
 
+# Production frontend URL
+FRONTEND_URL = "https://yume-production.up.railway.app"
+
 # AI Tools for onboarding
 ONBOARDING_TOOLS = [
     {
@@ -79,7 +82,7 @@ ONBOARDING_TOOLS = [
     },
     {
         "name": "add_service",
-        "description": "Agrega un servicio que ofrece el negocio. Llama esta herramienta por cada servicio que el usuario mencione.",
+        "description": "Agrega un servicio que ofrece el negocio. Llama esta herramienta por cada servicio que el usuario mencione. Después de llamar esta herramienta, SIEMPRE muestra al usuario su menú actualizado.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -100,8 +103,16 @@ ONBOARDING_TOOLS = [
         },
     },
     {
+        "name": "get_current_menu",
+        "description": "Obtiene el menú de servicios actual para mostrarlo al usuario. Úsalo cuando necesites mostrar el menú completo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
         "name": "save_business_hours",
-        "description": "Guarda el horario de atención del negocio.",
+        "description": "Guarda el horario de atención del negocio. Solo usa si el usuario proporciona horarios específicos.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -117,7 +128,7 @@ ONBOARDING_TOOLS = [
     },
     {
         "name": "complete_onboarding",
-        "description": "Finaliza el proceso de registro cuando ya tienes toda la información necesaria (nombre del negocio, al menos un servicio). Llama esta herramienta solo cuando el usuario confirme que está listo.",
+        "description": "Finaliza el proceso de registro. Solo llama cuando: 1) tienes nombre del negocio, 2) al menos un servicio, 3) el usuario confirmó que está listo.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -129,7 +140,33 @@ ONBOARDING_TOOLS = [
             "required": ["confirmed"],
         },
     },
+    {
+        "name": "send_dashboard_link",
+        "description": "Envía el link al dashboard y explica cómo iniciar sesión. Úsalo después de completar el registro.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
+
+
+def _format_service_menu(services: list[dict]) -> str:
+    """Format services list as a nice menu display.
+
+    Args:
+        services: List of service dicts with name, price, duration_minutes
+
+    Returns:
+        Formatted menu string
+    """
+    if not services:
+        return "Sin servicios aún"
+
+    lines = []
+    for svc in services:
+        lines.append(f"• {svc['name']} - ${svc['price']:.0f} ({svc['duration_minutes']} min)")
+    return "\n".join(lines)
 
 
 def build_onboarding_system_prompt(session: OnboardingSession) -> str:
@@ -143,71 +180,93 @@ def build_onboarding_system_prompt(session: OnboardingSession) -> str:
     """
     collected = session.collected_data or {}
     services = collected.get("services", [])
+    is_first_message = not collected.get("business_name") and not services
 
     # Build current progress summary
     progress_parts = []
     if collected.get("business_name"):
-        progress_parts.append(f"- Nombre del negocio: {collected['business_name']}")
-    if collected.get("business_type"):
-        progress_parts.append(f"- Tipo: {collected['business_type']}")
+        progress_parts.append(f"• Negocio: {collected['business_name']}")
     if collected.get("owner_name"):
-        progress_parts.append(f"- Dueño: {collected['owner_name']}")
+        progress_parts.append(f"• Dueño: {collected['owner_name']}")
     if services:
-        services_str = ", ".join([f"{s['name']} (${s['price']})" for s in services])
-        progress_parts.append(f"- Servicios: {services_str}")
+        progress_parts.append(f"• Servicios: {len(services)}")
+        for svc in services:
+            progress_parts.append(f"  - {svc['name']} - ${svc['price']:.0f} ({svc['duration_minutes']} min)")
 
     progress = "\n".join(progress_parts) if progress_parts else "Ninguna información recolectada aún."
 
-    # Determine what's missing
-    missing = []
+    # Build menu display for AI reference
+    menu_display = _format_service_menu(services)
+
+    # Determine current step
     if not collected.get("business_name"):
-        missing.append("nombre del negocio")
-    if not collected.get("owner_name"):
-        missing.append("nombre del dueño")
-    if not services:
-        missing.append("servicios que ofrece (nombre, duración, precio)")
+        current_step = "Paso 1: Obtener nombre del negocio y del dueño"
+    elif not services:
+        current_step = "Paso 2: Obtener servicios (nombre, precio, duración)"
+    else:
+        current_step = "Paso 3: Confirmar información y finalizar"
 
-    missing_str = ", ".join(missing) if missing else "Todo listo"
+    return f"""Eres Yume, una asistente de inteligencia artificial que ayuda a negocios de belleza en México a automatizar sus citas por WhatsApp.
 
-    return f"""Eres Yume, una asistente de inteligencia artificial que ayuda a negocios de belleza en México a configurar su sistema de citas por WhatsApp.
+## IMPORTANTE: Primera Interacción
+{"ESTA ES LA PRIMERA INTERACCIÓN. Debes presentarte con el mensaje de bienvenida completo." if is_first_message else "Ya te presentaste. Continúa con el flujo de registro."}
 
-## Tu objetivo
-Guiar al dueño del negocio para registrar su negocio en Yume de forma conversacional, amigable y eficiente.
+## Mensaje de Bienvenida (SOLO primera interacción)
+Si es la primera interacción, responde EXACTAMENTE así:
 
-## Información ya recolectada
+"¡Hola! Soy Yume, tu asistente para automatizar citas por WhatsApp.
+
+En solo 2-3 minutos vamos a configurar tu cuenta:
+1️⃣ Me dices el nombre de tu negocio
+2️⃣ Agregas tus servicios con precios
+3️⃣ ¡Listo! Tus clientes podrán agendar solos
+
+¿Empezamos? ¿Cómo se llama tu negocio y cuál es tu nombre?"
+
+## Estado Actual del Registro
 {progress}
 
-## Información que falta
-{missing_str}
+## Menú de Servicios Actual
+{menu_display}
 
-## Flujo de la conversación
-1. Si es la primera interacción, preséntate brevemente y explica que Yume les ayudará a agendar citas automáticamente por WhatsApp.
-2. Pregunta por el nombre del negocio y el nombre del dueño.
-3. Pregunta qué servicios ofrecen. Por cada servicio necesitas: nombre, duración aproximada y precio.
-4. Una vez que tengas al menos un servicio, puedes preguntar si quieren agregar más o si están listos.
-5. Cuando tengan toda la información básica, muestra un resumen y pregunta si es correcto.
-6. Si confirman, usa la herramienta complete_onboarding.
+## Paso Actual
+{current_step}
 
-## Instrucciones importantes
-- Habla en español mexicano natural, usa "tú" no "usted".
-- Sé concisa pero amable. No escribas párrafos largos.
-- Puedes preguntar varios datos en una sola pregunta si fluye natural.
-- Cuando el usuario diga un servicio con precio y duración, usa la herramienta add_service inmediatamente.
-- Si el usuario no sabe un precio exacto, sugiere precios típicos del mercado mexicano.
-- Duraciones típicas: corte 30-45min, tinte 90-120min, manicure 30-45min, pedicure 45-60min.
-- El horario de atención es opcional - si no lo dan, usaremos horario estándar (9am-7pm L-V, 9am-5pm Sábado).
-- NO inventes información. Solo guarda lo que el usuario te diga.
-- Mantén las respuestas cortas (2-4 oraciones máximo).
+## Flujo de Conversación
 
-## Ejemplos de respuestas
-- "¡Hola! Soy Yume. Te ayudo a que tus clientes puedan agendar citas por WhatsApp automáticamente. Para empezar, ¿cómo se llama tu negocio y cuál es tu nombre?"
-- "Perfecto, {collected.get('business_name', 'tu negocio')}. ¿Qué servicios ofrecen? Por ejemplo: corte $150 (30 min), tinte $500 (2 hrs)."
-- "Listo, agregué {services[-1]['name'] if services else 'el servicio'}. ¿Ofrecen algún otro servicio o eso es todo?"
-- "Ya tengo todo. Tu negocio '{collected.get('business_name', '')}' con {len(services)} servicio(s). ¿Está correcto?"
+### Paso 1: Información del Negocio
+- Obtén: nombre del negocio, tipo (salon/barbershop/spa/nails), nombre del dueño
+- Usa herramienta `save_business_info` cuando tengas los datos
+
+### Paso 2: Servicios
+- Pregunta qué servicios ofrecen con precio y duración
+- Por cada servicio mencionado, usa `add_service` INMEDIATAMENTE
+- **IMPORTANTE**: Después de agregar cada servicio, MUESTRA el menú actualizado al usuario
+- Formato: "Agregué [servicio]. Tu menú actual:\n• Corte - $150 (30 min)\n• Barba - $100 (20 min)\n\n¿Qué otro servicio ofreces?"
+- Pregunta si quieren agregar más servicios
+
+### Paso 3: Confirmación
+- Cuando digan que ya no hay más servicios, muestra resumen completo
+- Pregunta si todo está correcto
+- Si confirman, usa `complete_onboarding`
+- Después de completar, usa `send_dashboard_link` para enviar el link al dashboard
+
+## Instrucciones Importantes
+- Habla en español mexicano natural, usa "tú" no "usted"
+- Sé concisa pero amable. Máximo 3-4 oraciones por mensaje
+- Cuando el usuario diga un servicio, USA LA HERRAMIENTA add_service inmediatamente
+- Si el usuario no sabe un precio exacto, sugiere precios típicos mexicanos:
+  - Corte de cabello: $100-200 (30-45 min)
+  - Tinte: $400-800 (90-120 min)
+  - Manicure: $150-250 (30-45 min)
+  - Pedicure: $200-350 (45-60 min)
+  - Barba: $80-150 (20-30 min)
+- SIEMPRE muestra el menú actualizado después de agregar servicios
+- NO inventes información. Solo guarda lo que el usuario te diga
 
 ## Restricciones
 - NUNCA compartas información de otros negocios
-- Si preguntan algo que no es sobre registro, amablemente redirige la conversación
+- Si preguntan algo fuera del registro, redirige amablemente
 - No hagas promesas sobre funcionalidades que no existen
 """
 
@@ -399,15 +458,57 @@ class OnboardingHandler:
 
         elif tool_name == "add_service":
             services = collected.get("services", [])
-            services.append({
+            new_service = {
                 "name": tool_input.get("name"),
                 "duration_minutes": tool_input.get("duration_minutes"),
                 "price": tool_input.get("price"),
-            })
+            }
+            services.append(new_service)
             collected["services"] = services
             session.collected_data = collected
             await self.db.flush()
-            return {"success": True, "message": f"Servicio '{tool_input.get('name')}' agregado", "total_services": len(services)}
+
+            # Return the full updated menu so AI can display it
+            menu_items = []
+            for svc in services:
+                menu_items.append({
+                    "name": svc["name"],
+                    "price": f"${svc['price']:.0f}",
+                    "duration": f"{svc['duration_minutes']} min"
+                })
+
+            return {
+                "success": True,
+                "message": f"Servicio '{new_service['name']}' agregado",
+                "total_services": len(services),
+                "current_menu": menu_items,
+                "menu_display": _format_service_menu(services)
+            }
+
+        elif tool_name == "get_current_menu":
+            services = collected.get("services", [])
+            if not services:
+                return {
+                    "success": True,
+                    "total_services": 0,
+                    "current_menu": [],
+                    "menu_display": "Sin servicios aún"
+                }
+
+            menu_items = []
+            for svc in services:
+                menu_items.append({
+                    "name": svc["name"],
+                    "price": f"${svc['price']:.0f}",
+                    "duration": f"{svc['duration_minutes']} min"
+                })
+
+            return {
+                "success": True,
+                "total_services": len(services),
+                "current_menu": menu_items,
+                "menu_display": _format_service_menu(services)
+            }
 
         elif tool_name == "save_business_hours":
             hours = {}
@@ -445,6 +546,24 @@ class OnboardingHandler:
             except Exception as e:
                 logger.error(f"Error creating organization: {e}", exc_info=True)
                 return {"success": False, "error": str(e)}
+
+        elif tool_name == "send_dashboard_link":
+            business_name = collected.get("business_name", "tu negocio")
+            dashboard_url = f"{FRONTEND_URL}/login"
+
+            return {
+                "success": True,
+                "message": "Link del dashboard generado",
+                "dashboard_url": dashboard_url,
+                "business_name": business_name,
+                "login_instructions": "Inicia sesión con tu número de WhatsApp, sin contraseña",
+                "formatted_message": (
+                    f"¡Felicidades! Tu cuenta de {business_name} está activa.\n\n"
+                    f"📱 Dashboard: {dashboard_url}\n"
+                    f"(Inicia sesión con tu número de WhatsApp, sin contraseña)\n\n"
+                    f"Tus clientes ya pueden escribirte por WhatsApp para agendar citas automáticamente."
+                )
+            }
 
         return {"error": f"Unknown tool: {tool_name}"}
 
