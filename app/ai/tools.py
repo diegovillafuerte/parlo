@@ -37,25 +37,25 @@ logger = logging.getLogger(__name__)
 CUSTOMER_TOOLS = [
     {
         "name": "check_availability",
-        "description": "Verifica los horarios disponibles para un servicio en un rango de fechas. Usa esta herramienta SIEMPRE antes de ofrecer horarios al cliente.",
+        "description": "Verifica los horarios disponibles para un servicio. Usa esta herramienta SIEMPRE antes de ofrecer horarios al cliente. Interpreta fechas relativas: 'mañana' = tomorrow's date, 'esta semana' = today to end of week.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "service_name": {
                     "type": "string",
-                    "description": "Nombre del servicio (ej: 'Corte de cabello', 'Manicure')",
+                    "description": "Nombre del servicio (ej: 'Corte de cabello', 'Manicure'). Puede ser parcial.",
                 },
                 "date_from": {
                     "type": "string",
-                    "description": "Fecha inicial en formato YYYY-MM-DD",
+                    "description": "Fecha inicial en formato YYYY-MM-DD. Usa la fecha actual si el cliente dice 'hoy', mañana si dice 'mañana', etc.",
                 },
                 "date_to": {
                     "type": "string",
-                    "description": "Fecha final en formato YYYY-MM-DD (opcional, si no se proporciona usa date_from)",
+                    "description": "Fecha final en formato YYYY-MM-DD. Para 'esta semana' usa el próximo domingo. Para un día específico, omite este campo.",
                 },
                 "preferred_staff_name": {
                     "type": "string",
-                    "description": "Nombre del empleado preferido (opcional)",
+                    "description": "Nombre del empleado preferido (opcional). Si el cliente dice 'con María', pasa 'María' aquí.",
                 },
             },
             "required": ["service_name", "date_from"],
@@ -169,24 +169,24 @@ CUSTOMER_TOOLS = [
 STAFF_TOOLS = [
     {
         "name": "get_my_schedule",
-        "description": "Obtiene la agenda personal del empleado para un rango de fechas.",
+        "description": "Obtiene la agenda personal del empleado para un día o rango de fechas. Si el staff dice 'hoy', usa la fecha actual. Si dice 'mañana', usa la fecha de mañana.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "date_from": {
                     "type": "string",
-                    "description": "Fecha inicial en formato YYYY-MM-DD (por defecto hoy)",
+                    "description": "Fecha inicial en formato YYYY-MM-DD. Usa la fecha del prompt del sistema para 'hoy' o 'mañana'.",
                 },
                 "date_to": {
                     "type": "string",
-                    "description": "Fecha final en formato YYYY-MM-DD (por defecto igual a date_from)",
+                    "description": "Fecha final en formato YYYY-MM-DD (opcional, si no se proporciona usa date_from)",
                 },
             },
         },
     },
     {
         "name": "get_business_schedule",
-        "description": "Obtiene la agenda completa del negocio (todas las citas de todos los empleados).",
+        "description": "Obtiene la agenda completa del negocio (todas las citas de todos los empleados). Solo para dueños o con permiso.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -203,21 +203,21 @@ STAFF_TOOLS = [
     },
     {
         "name": "block_time",
-        "description": "Bloquea tiempo en la agenda del empleado (para comida, descanso, citas personales).",
+        "description": "Bloquea tiempo en la agenda del empleado (para comida, descanso, citas personales). El staff puede decir 'bloquea de 2 a 3' y debes convertirlo a formato ISO con la fecha correcta.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "start_time": {
                     "type": "string",
-                    "description": "Inicio del bloqueo en formato ISO (YYYY-MM-DDTHH:MM:SS)",
+                    "description": "Inicio del bloqueo en formato ISO (YYYY-MM-DDTHH:MM:SS). Convierte '2 PM' a '14:00:00'.",
                 },
                 "end_time": {
                     "type": "string",
-                    "description": "Fin del bloqueo en formato ISO (YYYY-MM-DDTHH:MM:SS)",
+                    "description": "Fin del bloqueo en formato ISO (YYYY-MM-DDTHH:MM:SS). Convierte '3 PM' a '15:00:00'.",
                 },
                 "reason": {
                     "type": "string",
-                    "description": "Razón del bloqueo (opcional)",
+                    "description": "Razón del bloqueo (ej: 'comida', 'descanso', 'cita personal')",
                 },
             },
             "required": ["start_time", "end_time"],
@@ -386,8 +386,9 @@ class ToolHandler:
         service_name = tool_input.get("service_name", "")
         date_from_str = tool_input.get("date_from", "")
         date_to_str = tool_input.get("date_to", date_from_str)
+        preferred_staff = tool_input.get("preferred_staff_name")
 
-        # Find service by name
+        # Find service by name (fuzzy match)
         result = await self.db.execute(
             select(ServiceType).where(
                 ServiceType.organization_id == self.org.id,
@@ -405,10 +406,14 @@ class ToolHandler:
                     ServiceType.is_active == True,
                 )
             )
-            available_services = [s.name for s in services_result.scalars().all()]
+            available_services = [
+                f"{s.name} - ${s.price_cents / 100:.0f} ({s.duration_minutes} min)"
+                for s in services_result.scalars().all()
+            ]
             return {
                 "error": f"No encontré el servicio '{service_name}'",
                 "available_services": available_services,
+                "suggestion": "Pregunta al cliente qué servicio de la lista desea",
             }
 
         # Parse dates
@@ -432,6 +437,23 @@ class ToolHandler:
         if not location:
             return {"error": "No hay ubicación configurada para el negocio"}
 
+        # If preferred staff specified, find their ID
+        staff_id = None
+        if preferred_staff:
+            staff_result = await self.db.execute(
+                select(Staff).where(
+                    Staff.organization_id == self.org.id,
+                    Staff.name.ilike(f"%{preferred_staff}%"),
+                    Staff.is_active == True,
+                )
+            )
+            staff = staff_result.scalar_one_or_none()
+            if staff:
+                staff_id = staff.id
+            else:
+                # Staff not found, continue without filter but warn
+                pass
+
         # Get available slots
         slots = await scheduling_service.get_available_slots(
             db=self.db,
@@ -440,32 +462,59 @@ class ToolHandler:
             service_type_id=service.id,
             date_from=date_from,
             date_to=date_to,
+            staff_id=staff_id,
         )
 
         if not slots:
+            # Try to suggest alternative dates
             return {
                 "service": service.name,
+                "price": f"${service.price_cents / 100:.0f}",
+                "duration": f"{service.duration_minutes} min",
                 "date_range": f"{date_from_str} a {date_to_str}",
                 "slots": [],
                 "message": "No hay horarios disponibles en este rango de fechas",
+                "suggestion": "Pregunta al cliente si le sirve otra fecha",
             }
 
-        # Format slots for AI
-        formatted_slots = []
+        # Group slots by date for clearer display
+        slots_by_date = {}
         for slot in slots:
-            formatted_slots.append({
-                "date": slot.start_time.strftime("%Y-%m-%d"),
+            date_key = slot.start_time.strftime("%Y-%m-%d")
+            day_name = slot.start_time.strftime("%A")  # Day of week
+            if date_key not in slots_by_date:
+                slots_by_date[date_key] = {
+                    "date": date_key,
+                    "day_name": day_name,
+                    "times": [],
+                }
+            slots_by_date[date_key]["times"].append({
                 "time": slot.start_time.strftime("%I:%M %p"),
+                "iso_time": slot.start_time.isoformat(),
                 "staff_name": slot.staff_name,
-                "staff_id": str(slot.staff_id),
             })
+
+        # Format slots for AI - limit to first few per day to avoid overwhelming
+        formatted_slots = []
+        for date_info in list(slots_by_date.values())[:5]:  # Max 5 days
+            day_slots = {
+                "date": date_info["date"],
+                "day_name": date_info["day_name"],
+                "times": date_info["times"][:6],  # Max 6 times per day
+            }
+            formatted_slots.append(day_slots)
+
+        # Create a human-readable summary
+        total_slots = sum(len(d["times"]) for d in formatted_slots)
 
         return {
             "service": service.name,
-            "price": f"${service.price_cents / 100:.0f} MXN",
+            "price": f"${service.price_cents / 100:.0f}",
             "duration": f"{service.duration_minutes} min",
             "date_range": f"{date_from_str} a {date_to_str}",
-            "slots": formatted_slots,
+            "total_available": total_slots,
+            "slots_by_date": formatted_slots,
+            "note": "Ofrece 3-4 opciones al cliente, no todos los horarios",
         }
 
     async def _book_appointment(
@@ -797,23 +846,68 @@ class ToolHandler:
         )
         appointments = result.scalars().all()
 
+        # Get blocked time for this staff
+        blocked_result = await self.db.execute(
+            select(Availability).where(
+                Availability.staff_id == staff.id,
+                Availability.type == AvailabilityType.EXCEPTION.value,
+                Availability.is_available == False,
+                Availability.exception_date >= date_from.date(),
+                Availability.exception_date <= date_to.date(),
+            )
+        )
+        blocked_times = blocked_result.scalars().all()
+
         formatted = []
         for apt in appointments:
             service = await self.db.get(ServiceType, apt.service_type_id)
             customer = await self.db.get(Customer, apt.customer_id)
 
             formatted.append({
+                "type": "appointment",
                 "time": apt.scheduled_start.strftime("%I:%M %p"),
+                "end_time": apt.scheduled_end.strftime("%I:%M %p"),
                 "service": service.name if service else "Unknown",
                 "customer": customer.name if customer and customer.name else "Cliente",
+                "customer_phone": customer.phone_number if customer else None,
                 "status": apt.status,
+                "appointment_id": str(apt.id),
             })
+
+        # Add blocked times
+        for block in blocked_times:
+            if block.start_time and block.end_time:
+                formatted.append({
+                    "type": "blocked",
+                    "time": block.start_time.strftime("%I:%M %p"),
+                    "end_time": block.end_time.strftime("%I:%M %p"),
+                    "reason": "Bloqueado",
+                })
+
+        # Sort by time
+        formatted.sort(key=lambda x: x["time"])
+
+        # Build display string for easy AI formatting
+        if not formatted:
+            display = "No tienes citas programadas."
+        else:
+            lines = []
+            for item in formatted:
+                if item["type"] == "appointment":
+                    lines.append(f"⏰ {item['time']} - {item['service']} - {item['customer']}")
+                else:
+                    lines.append(f"🚫 {item['time']} - {item['end_time']} - {item['reason']}")
+            display = "\n".join(lines)
+
+        is_single_day = date_from_str == date_to_str
+        date_display = date_from_str if is_single_day else f"{date_from_str} a {date_to_str}"
 
         return {
             "staff_name": staff.name,
-            "date_range": f"{date_from_str} a {date_to_str}",
+            "date": date_display,
             "appointments": formatted,
-            "count": len(formatted),
+            "count": len([f for f in formatted if f["type"] == "appointment"]),
+            "display": display,
         }
 
     async def _get_business_schedule(

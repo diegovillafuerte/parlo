@@ -52,8 +52,10 @@ DEFAULT_BUSINESS_HOURS = {
 }
 
 
-# Production frontend URL
-FRONTEND_URL = "https://yume-production.up.railway.app"
+from app.config import get_settings
+
+# Get frontend URL from config
+_settings = get_settings()
 
 # AI Tools for onboarding
 ONBOARDING_TOOLS = [
@@ -75,6 +77,14 @@ ONBOARDING_TOOLS = [
                 "owner_name": {
                     "type": "string",
                     "description": "Nombre del dueño",
+                },
+                "address": {
+                    "type": "string",
+                    "description": "Dirección del negocio (opcional)",
+                },
+                "city": {
+                    "type": "string",
+                    "description": "Ciudad (opcional)",
                 },
             },
             "required": ["business_name", "business_type", "owner_name"],
@@ -111,6 +121,29 @@ ONBOARDING_TOOLS = [
         },
     },
     {
+        "name": "add_staff_member",
+        "description": "Agrega un empleado al negocio. El dueño ya se registra automáticamente. Usa esto para agregar empleados adicionales.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Nombre del empleado",
+                },
+                "phone_number": {
+                    "type": "string",
+                    "description": "Número de WhatsApp del empleado (ej: 5512345678)",
+                },
+                "services": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Lista de nombres de servicios que hace este empleado. Si hace todos, omitir.",
+                },
+            },
+            "required": ["name", "phone_number"],
+        },
+    },
+    {
         "name": "save_business_hours",
         "description": "Guarda el horario de atención del negocio. Solo usa si el usuario proporciona horarios específicos.",
         "input_schema": {
@@ -128,7 +161,7 @@ ONBOARDING_TOOLS = [
     },
     {
         "name": "complete_onboarding",
-        "description": "Finaliza el proceso de registro. Solo llama cuando: 1) tienes nombre del negocio, 2) al menos un servicio, 3) el usuario confirmó que está listo.",
+        "description": "Finaliza el proceso de registro y crea la cuenta. Solo llama cuando: 1) tienes nombre del negocio, 2) al menos un servicio, 3) el usuario confirmó que está listo para activar su cuenta.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -188,6 +221,7 @@ def build_onboarding_system_prompt(session: OnboardingSession) -> str:
     """
     collected = session.collected_data or {}
     services = collected.get("services", [])
+    staff_members = collected.get("staff", [])
     is_first_message = not collected.get("business_name") and not services
 
     # Build current progress summary
@@ -196,10 +230,18 @@ def build_onboarding_system_prompt(session: OnboardingSession) -> str:
         progress_parts.append(f"• Negocio: {collected['business_name']}")
     if collected.get("owner_name"):
         progress_parts.append(f"• Dueño: {collected['owner_name']}")
+    if collected.get("address"):
+        progress_parts.append(f"• Dirección: {collected['address']}")
+    if collected.get("business_hours"):
+        progress_parts.append("• Horario: Configurado")
     if services:
         progress_parts.append(f"• Servicios: {len(services)}")
         for svc in services:
             progress_parts.append(f"  - {svc['name']} - ${svc['price']:.0f} ({svc['duration_minutes']} min)")
+    if staff_members:
+        progress_parts.append(f"• Empleados adicionales: {len(staff_members)}")
+        for st in staff_members:
+            progress_parts.append(f"  - {st['name']} ({st.get('phone_number', 'sin tel')})")
 
     progress = "\n".join(progress_parts) if progress_parts else "Ninguna información recolectada aún."
 
@@ -213,9 +255,9 @@ def build_onboarding_system_prompt(session: OnboardingSession) -> str:
     elif not services:
         current_step = "Paso 2: Obtener servicios (nombre, precio, duración)"
     elif is_awaiting_connection:
-        current_step = "Paso 3: Esperando conexión de WhatsApp Business"
+        current_step = "Esperando conexión de WhatsApp Business"
     else:
-        current_step = "Paso 3: Confirmar servicios y enviar link de conexión"
+        current_step = "Paso 3: Confirmar datos y activar cuenta"
 
     return f"""Eres Yume, una asistente de inteligencia artificial que ayuda a negocios de belleza en México a automatizar sus citas por WhatsApp.
 
@@ -225,14 +267,16 @@ def build_onboarding_system_prompt(session: OnboardingSession) -> str:
 ## Mensaje de Bienvenida (SOLO primera interacción)
 Si es la primera interacción, responde EXACTAMENTE así:
 
-"¡Hola! Soy Yume, tu asistente para automatizar citas por WhatsApp.
+"¡Hola! 👋 Soy Yume, tu asistente para agendar citas automáticamente.
 
-En solo 2-3 minutos vamos a configurar tu cuenta:
-1️⃣ Me dices el nombre de tu negocio
-2️⃣ Agregas tus servicios con precios
-3️⃣ ¡Listo! Tus clientes podrán agendar solos
+Ayudo a negocios de belleza a que sus clientes agenden por WhatsApp sin que tengas que contestar cada mensaje.
 
-¿Empezamos? ¿Cómo se llama tu negocio y cuál es tu nombre?"
+En 2-3 minutos configuramos tu cuenta:
+1️⃣ Nombre de tu negocio
+2️⃣ Servicios con precios
+3️⃣ ¡Listo!
+
+¿Tienes un salón, barbería, o negocio de belleza?"
 
 ## Estado Actual del Registro
 {progress}
@@ -246,44 +290,63 @@ En solo 2-3 minutos vamos a configurar tu cuenta:
 ## Flujo de Conversación
 
 ### Paso 1: Información del Negocio
+- Pregunta primero si tienen un negocio de belleza
 - Obtén: nombre del negocio, tipo (salon/barbershop/spa/nails), nombre del dueño
-- Usa herramienta `save_business_info` cuando tengas los datos
+- Opcionalmente: dirección (útil para clientes)
+- Usa herramienta `save_business_info` cuando tengas los datos básicos
+- Después pregunta por los horarios de atención
 
-### Paso 2: Servicios
+### Paso 2: Horarios
+- Pregunta qué días abren y en qué horario
+- Ejemplo: "¿Qué días abren y en qué horario?"
+- Si dan horario tipo "lunes a sábado de 10 a 8", usa `save_business_hours`
+- Pregunta si cierran para comer o es horario corrido
+
+### Paso 3: Servicios
 - Pregunta qué servicios ofrecen con precio y duración
+- Ejemplo: "Dime el nombre, cuánto dura y el precio. Ejemplo: 'Corte de cabello, 45 minutos, $150'"
 - Por cada servicio mencionado, usa `add_service` INMEDIATAMENTE
-- **IMPORTANTE**: Después de agregar cada servicio, MUESTRA el menú actualizado al usuario
-- Formato: "Agregué [servicio]. Tu menú actual:\n• Corte - $150 (30 min)\n• Barba - $100 (20 min)\n\n¿Qué otro servicio ofreces?"
-- Pregunta si quieren agregar más servicios
+- **IMPORTANTE**: Después de agregar servicios, MUESTRA el menú actualizado al usuario
+- Formato: "Perfecto, registré N servicios:\n• Corte - $150 (30 min)\n• Barba - $100 (20 min)\n\n¿Falta algún servicio?"
+- Pregunta si quieren agregar más servicios o si está completo
 
-### Paso 3: Conexión de WhatsApp Business
-- Cuando digan que ya no hay más servicios, muestra el menú completo
-- Pregunta si están listos para conectar su WhatsApp Business
-- Si confirman, usa `send_whatsapp_connect_link` para enviar el link
-- El usuario debe abrir el link en su celular para conectar su cuenta
+### Paso 4: Empleados (Opcional)
+- Si tienen más de una persona, pregunta quién más atiende
+- Para cada empleado necesitas: nombre y teléfono de WhatsApp
+- Usa `add_staff_member` por cada empleado adicional
+- Pregunta si todos hacen todos los servicios o hay especialidades
+- El dueño ya se registra automáticamente con su número actual
 
-### Paso 4: Después de conectar (cuando el usuario regresa)
-- Si el usuario escribe después de recibir el link de conexión, pregunta si ya conectó su WhatsApp
-- Si confirman que sí, usa `complete_onboarding` para finalizar
-- Después de completar, usa `send_dashboard_link` para enviar el link al dashboard
+### Paso 5: Confirmación y Activación
+- Muestra un resumen de todo lo configurado
+- Pregunta "¿Todo correcto? ¿Activamos tu cuenta?"
+- Si confirman, usa `complete_onboarding` para crear la cuenta
+- Después usa `send_dashboard_link` para enviar el link al dashboard
+- Explica que sus clientes podrán escribir a este mismo número para agendar
 
 ## Instrucciones Importantes
 - Habla en español mexicano natural, usa "tú" no "usted"
 - Sé concisa pero amable. Máximo 3-4 oraciones por mensaje
-- Cuando el usuario diga un servicio, USA LA HERRAMIENTA add_service inmediatamente
+- Cuando el usuario mencione servicios, USA LA HERRAMIENTA add_service inmediatamente
+- Interpreta formatos flexibles de entrada:
+  - "Corte dama $250 45 min" → Corte dama, 45 min, $250
+  - "Corte 150" → Corte, duración estándar 30 min, $150
 - Si el usuario no sabe un precio exacto, sugiere precios típicos mexicanos:
   - Corte de cabello: $100-200 (30-45 min)
   - Tinte: $400-800 (90-120 min)
   - Manicure: $150-250 (30-45 min)
   - Pedicure: $200-350 (45-60 min)
   - Barba: $80-150 (20-30 min)
+  - Peinado: $200-400 (45-60 min)
 - SIEMPRE muestra el menú actualizado después de agregar servicios
 - NO inventes información. Solo guarda lo que el usuario te diga
+- Si el usuario quiere corregir algo, permítelo amablemente
 
 ## Restricciones
 - NUNCA compartas información de otros negocios
 - Si preguntan algo fuera del registro, redirige amablemente
 - No hagas promesas sobre funcionalidades que no existen
+- El servicio es GRATUITO durante el piloto - menciónalo si preguntan sobre costos
 """
 
 
@@ -467,10 +530,19 @@ class OnboardingHandler:
             collected["business_name"] = tool_input.get("business_name")
             collected["business_type"] = tool_input.get("business_type")
             collected["owner_name"] = tool_input.get("owner_name")
+            if tool_input.get("address"):
+                collected["address"] = tool_input.get("address")
+            if tool_input.get("city"):
+                collected["city"] = tool_input.get("city")
             session.collected_data = collected
             session.state = OnboardingState.COLLECTING_SERVICES.value
             await self.db.flush()
-            return {"success": True, "message": "Información del negocio guardada"}
+            return {
+                "success": True,
+                "message": "Información del negocio guardada",
+                "business_name": collected["business_name"],
+                "owner_name": collected["owner_name"],
+            }
 
         elif tool_name == "add_service":
             services = collected.get("services", [])
@@ -526,6 +598,33 @@ class OnboardingHandler:
                 "menu_display": _format_service_menu(services)
             }
 
+        elif tool_name == "add_staff_member":
+            staff_list = collected.get("staff", [])
+            phone = tool_input.get("phone_number", "")
+            # Normalize phone number
+            if phone and not phone.startswith("+"):
+                if phone.startswith("52"):
+                    phone = f"+{phone}"
+                else:
+                    phone = f"+52{phone}"
+
+            new_staff = {
+                "name": tool_input.get("name"),
+                "phone_number": phone,
+                "services": tool_input.get("services"),  # None means all services
+            }
+            staff_list.append(new_staff)
+            collected["staff"] = staff_list
+            session.collected_data = collected
+            await self.db.flush()
+
+            return {
+                "success": True,
+                "message": f"Empleado '{new_staff['name']}' agregado",
+                "total_staff": len(staff_list) + 1,  # +1 for owner
+                "staff_display": f"• {new_staff['name']} - {phone}",
+            }
+
         elif tool_name == "save_business_hours":
             hours = {}
             for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
@@ -576,7 +675,7 @@ class OnboardingHandler:
             session.state = OnboardingState.AWAITING_WHATSAPP_CONNECT.value
             await self.db.flush()
 
-            connect_url = f"{FRONTEND_URL}/connect?token={connection_token}"
+            connect_url = f"{_settings.frontend_url}/connect?token={connection_token}"
             business_name = collected.get("business_name", "tu negocio")
 
             return {
@@ -594,7 +693,7 @@ class OnboardingHandler:
 
         elif tool_name == "send_dashboard_link":
             business_name = collected.get("business_name", "tu negocio")
-            dashboard_url = f"{FRONTEND_URL}/login"
+            dashboard_url = f"{_settings.frontend_url}/login"
 
             return {
                 "success": True,
@@ -624,6 +723,14 @@ class OnboardingHandler:
         collected = session.collected_data
         logger.info(f"Creating organization from onboarding: {collected}")
 
+        # Build address string
+        address_parts = []
+        if collected.get("address"):
+            address_parts.append(collected["address"])
+        if collected.get("city"):
+            address_parts.append(collected["city"])
+        full_address = ", ".join(address_parts) if address_parts else ""
+
         # 1. Create Organization
         org = Organization(
             name=collected["business_name"],
@@ -647,7 +754,7 @@ class OnboardingHandler:
         location = Location(
             organization_id=org.id,
             name="Principal",
-            address=collected.get("address", ""),
+            address=full_address,
             business_hours=collected.get("business_hours", DEFAULT_BUSINESS_HOURS),
             is_primary=True,
         )
@@ -658,6 +765,7 @@ class OnboardingHandler:
 
         # 3. Create Services
         services = []
+        service_by_name = {}  # Map name to service for staff linking
         for svc_data in collected.get("services", []):
             # Convert price to cents (price_cents field stores cents)
             price_cents = int(svc_data["price"] * 100)
@@ -670,6 +778,7 @@ class OnboardingHandler:
             )
             self.db.add(service)
             services.append(service)
+            service_by_name[svc_data["name"].lower()] = service
 
         await self.db.flush()
         for svc in services:
@@ -693,7 +802,7 @@ class OnboardingHandler:
 
         # 5. Create Staff (owner)
         owner_name = collected.get("owner_name") or session.owner_name or "Dueño"
-        staff = Staff(
+        owner_staff = Staff(
             organization_id=org.id,
             location_id=location.id,
             default_spot_id=spot.id,
@@ -703,13 +812,47 @@ class OnboardingHandler:
             is_active=True,
             permissions={"can_manage_all": True},
         )
-        self.db.add(staff)
+        self.db.add(owner_staff)
         await self.db.flush()
-        await self.db.refresh(staff)
+        await self.db.refresh(owner_staff)
 
-        # Link staff to all services
-        staff.service_types.extend(services)
-        logger.info(f"Created staff (owner): {staff.id}")
+        # Link owner to all services
+        owner_staff.service_types.extend(services)
+        logger.info(f"Created staff (owner): {owner_staff.id}")
+
+        # 6. Create additional staff members collected during onboarding
+        additional_staff = collected.get("staff", [])
+        for staff_data in additional_staff:
+            # Determine which services this staff member does
+            staff_services = services  # Default: all services
+            if staff_data.get("services"):
+                # Filter to only specified services
+                staff_services = []
+                for svc_name in staff_data["services"]:
+                    svc = service_by_name.get(svc_name.lower())
+                    if svc:
+                        staff_services.append(svc)
+                # If no matches, assign all services
+                if not staff_services:
+                    staff_services = services
+
+            employee = Staff(
+                organization_id=org.id,
+                location_id=location.id,
+                default_spot_id=spot.id,
+                name=staff_data["name"],
+                phone_number=staff_data.get("phone_number", ""),
+                role=StaffRole.EMPLOYEE.value,
+                is_active=True,
+                permissions={"can_view_schedule": True, "can_book": True},
+            )
+            self.db.add(employee)
+            await self.db.flush()
+            await self.db.refresh(employee)
+
+            # Link employee to their services
+            employee.service_types.extend(staff_services)
+            logger.info(f"Created staff (employee): {employee.id} - {employee.name}")
 
         await self.db.commit()
         return org
