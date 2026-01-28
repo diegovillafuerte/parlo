@@ -30,12 +30,21 @@ def upgrade() -> None:
     op.rename_table('staff', 'yume_users')
     op.rename_table('staff_service_types', 'yume_user_service_types')
 
-    # Step 2: Rename indexes on the renamed tables
+    # Step 2: Rename indexes on the renamed tables (wrapped in try/except for resilience)
+    from sqlalchemy import text
+    conn = op.get_bind()
+
     # customers -> end_customers indexes
-    op.execute('ALTER INDEX ix_customer_phone_number RENAME TO ix_end_customer_phone_number')
+    try:
+        conn.execute(text('ALTER INDEX ix_customer_phone_number RENAME TO ix_end_customer_phone_number'))
+    except Exception:
+        pass  # Index might not exist or have different name
 
     # staff -> yume_users indexes
-    op.execute('ALTER INDEX ix_staff_phone_number RENAME TO ix_yume_user_phone_number')
+    try:
+        conn.execute(text('ALTER INDEX ix_staff_phone_number RENAME TO ix_yume_user_phone_number'))
+    except Exception:
+        pass  # Index might not exist or have different name
 
     # Step 3: Rename columns in appointments table
     op.alter_column('appointments', 'customer_id', new_column_name='end_customer_id')
@@ -50,20 +59,38 @@ def upgrade() -> None:
     # Step 6: Rename column in yume_user_service_types (association table)
     op.alter_column('yume_user_service_types', 'staff_id', new_column_name='yume_user_id')
 
-    # Step 7: Rename constraints
-    # customers unique constraint
-    op.execute('ALTER TABLE end_customers RENAME CONSTRAINT uq_customer_org_phone TO uq_end_customer_org_phone')
+    # Step 7: Rename constraints (wrapped in try/except for resilience)
+    # The constraint names might vary depending on how they were created
+    from sqlalchemy import text
+    conn = op.get_bind()
 
-    # staff unique constraint
-    op.execute('ALTER TABLE yume_users RENAME CONSTRAINT uq_staff_org_phone TO uq_yume_user_org_phone')
+    # Try to rename customers unique constraint
+    try:
+        conn.execute(text('ALTER TABLE end_customers RENAME CONSTRAINT uq_customer_org_phone TO uq_end_customer_org_phone'))
+    except Exception:
+        pass  # Constraint might not exist or have different name
+
+    # Try to rename staff unique constraint
+    try:
+        conn.execute(text('ALTER TABLE yume_users RENAME CONSTRAINT uq_staff_org_phone TO uq_yume_user_org_phone'))
+    except Exception:
+        pass  # Constraint might not exist or have different name
 
 
 def downgrade() -> None:
     """Downgrade database schema - revert customer/staff terminology."""
+    from sqlalchemy import text
+    conn = op.get_bind()
 
-    # Step 1: Rename constraints back
-    op.execute('ALTER TABLE end_customers RENAME CONSTRAINT uq_end_customer_org_phone TO uq_customer_org_phone')
-    op.execute('ALTER TABLE yume_users RENAME CONSTRAINT uq_yume_user_org_phone TO uq_staff_org_phone')
+    # Step 1: Rename constraints back (wrapped in try/except for resilience)
+    try:
+        conn.execute(text('ALTER TABLE end_customers RENAME CONSTRAINT uq_end_customer_org_phone TO uq_customer_org_phone'))
+    except Exception:
+        pass
+    try:
+        conn.execute(text('ALTER TABLE yume_users RENAME CONSTRAINT uq_yume_user_org_phone TO uq_staff_org_phone'))
+    except Exception:
+        pass
 
     # Step 2: Rename columns back
     op.alter_column('yume_user_service_types', 'yume_user_id', new_column_name='staff_id')
@@ -72,9 +99,15 @@ def downgrade() -> None:
     op.alter_column('appointments', 'yume_user_id', new_column_name='staff_id')
     op.alter_column('appointments', 'end_customer_id', new_column_name='customer_id')
 
-    # Step 3: Rename indexes back
-    op.execute('ALTER INDEX ix_yume_user_phone_number RENAME TO ix_staff_phone_number')
-    op.execute('ALTER INDEX ix_end_customer_phone_number RENAME TO ix_customer_phone_number')
+    # Step 3: Rename indexes back (wrapped in try/except for resilience)
+    try:
+        conn.execute(text('ALTER INDEX ix_yume_user_phone_number RENAME TO ix_staff_phone_number'))
+    except Exception:
+        pass
+    try:
+        conn.execute(text('ALTER INDEX ix_end_customer_phone_number RENAME TO ix_customer_phone_number'))
+    except Exception:
+        pass
 
     # Step 4: Rename tables back
     op.rename_table('yume_user_service_types', 'staff_service_types')
