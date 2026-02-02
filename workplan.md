@@ -2,7 +2,7 @@
 
 This document tracks progress toward production readiness. Requirements are from `docs/PROJECT_SPEC.md`.
 
-**Last Updated:** 2026-01-27 (Playground implementation added)
+**Last Updated:** 2026-02-01 (Migrated to Render, deferred Celery workers)
 
 ---
 
@@ -11,13 +11,14 @@ This document tracks progress toward production readiness. Requirements are from
 **Phase:** Production
 **Estimated Completion:** ~85% of core functionality implemented
 **Blockers:** None currently
-**Deployment:** Railway (backend, frontend, PostgreSQL, Redis)
+**Deployment:** Render (backend, frontend, PostgreSQL) - migrated from Railway
 **LLM:** OpenAI GPT-5.2
 **WhatsApp:** Twilio WhatsApp API
+**Note:** Celery workers (reminders) deferred to reduce hosting costs
 
 ### What's Working
-- Backend API (63 endpoints) - deployed on Railway
-- Database models (15 entities) - Railway PostgreSQL
+- Backend API (63 endpoints) - deployed on Render
+- Database models (15 entities) - Render PostgreSQL
 - AI conversation with GPT-5.2 tool calling (customer + staff flows)
 - Message routing (staff vs customer identification)
 - Availability slot calculation
@@ -27,12 +28,12 @@ This document tracks progress toward production readiness. Requirements are from
 - Frontend: login, location/staff/service/spot management, company settings
 - Frontend: Schedule page with appointment viewing, filtering, and actions
 - Magic link authentication
-- Celery background tasks with 24-hour appointment reminders + trace cleanup
 - Twilio WhatsApp integration (send/receive messages)
 - Meta Embedded Signup (connect existing WhatsApp Business numbers)
 - Twilio number provisioning (provision new numbers for businesses)
 
-### What's Not Working
+### What's Not Working / Deferred
+- **Celery workers** (appointment reminders, trace cleanup) - deferred to reduce hosting costs
 - Daily schedule summary task (Phase 3.3)
 - New booking notifications (Phase 3.4)
 - WhatsApp template messages
@@ -470,18 +471,18 @@ Phase 1 established the core architecture. All items below are implemented.
 **Priority:** HIGH
 **Requirements:** 7.3.x
 
-- [x] Choose hosting provider → Railway
-- [x] Set up managed PostgreSQL → Railway PostgreSQL
-- [x] Set up managed Redis → Railway Redis
+- [x] Choose hosting provider → Render (migrated from Railway 2026-02-01)
+- [x] Set up managed PostgreSQL → Render PostgreSQL
+- [ ] ~~Set up managed Redis~~ → Deferred (only needed for Celery)
 - [x] Configure environment variables
 - [ ] Set up CI/CD pipeline
 - [ ] Configure domain (api.yume.mx, app.yume.mx)
-- [x] Set up SSL certificates → Railway provides HTTPS
+- [x] Set up SSL certificates → Render provides HTTPS
 - [x] Deploy backend
 - [x] Deploy frontend
-- [ ] Deploy Celery worker (runs locally for now)
+- [ ] ~~Deploy Celery worker~~ → Deferred (see Future Features)
 
-**Acceptance:** System deployed and accessible on Railway URLs.
+**Acceptance:** System deployed and accessible on Render URLs.
 
 ### 7.4 Monitoring
 **Priority:** MEDIUM
@@ -543,7 +544,7 @@ This maps PROJECT_SPEC.md requirements to implementation tasks.
 | 3.3.x | View appointments | ✅ AI tools done | 2.3 |
 | 3.4.x | Modify appointments | ✅ AI tools done | 2.3 |
 | 3.5.1 | Booking confirmation | ✅ Done (in conversation) | 1 |
-| 3.5.2 | 24h reminder | ❌ Not started | 3.2 |
+| 3.5.2 | 24h reminder | ⏸️ Deferred (needs Celery) | 3.2 |
 | 3.5.3-4 | Cancellation/reschedule notification | ❌ Not started | 3.5 |
 | 3.6.x | Get help / handoff | ✅ AI tools done | 1 |
 
@@ -578,15 +579,15 @@ This maps PROJECT_SPEC.md requirements to implementation tasks.
 | 6.1.x | WhatsApp API | ✅ Twilio implemented | 1 |
 | 6.2.x | Message templates | ❌ Need Twilio Content setup | 3.x |
 | 6.3.x | AI/LLM | ✅ GPT-5.2 implemented | 1 |
-| 6.4.x | Background tasks | ✅ Celery done | 3.1 |
+| 6.4.x | Background tasks | ⏸️ Celery code ready, workers deferred | 3.1 |
 
 ### 7. Infrastructure Requirements
 
 | Req | Description | Status | Phase |
 |-----|-------------|--------|-------|
-| 7.1.x | Database | ✅ Railway PostgreSQL | 7.3 |
-| 7.2.x | Redis | ✅ Railway Redis | 7.3 |
-| 7.3.x | Deployment | ✅ Railway (backend + frontend) | 7.3 |
+| 7.1.x | Database | ✅ Render PostgreSQL | 7.3 |
+| 7.2.x | Redis | ⏸️ Deferred (not needed without Celery) | 7.3 |
+| 7.3.x | Deployment | ✅ Render (backend + frontend) | 7.3 |
 | 7.4.x | Monitoring | ❌ Not set up | 7.4 |
 
 ---
@@ -613,26 +614,63 @@ Based on dependencies and business value:
 
 ## Notes for Next Session
 
-- **Deployed on Railway:** Backend, frontend, PostgreSQL, Redis all running
+- **Deployed on Render:** Backend, frontend, PostgreSQL (migrated from Railway 2026-02-01)
 - **LLM:** Using GPT-5.2 for all AI conversations
 - **WhatsApp:** Using Twilio API (not Meta direct)
-- Phase 2 Core (2.1-2.4) and Phase 3 Core (3.1, 3.2) and Phase 5 now COMPLETE
-- **Playground:** New conversation debugger in admin dashboard (Phase 5.3)
-  - Run migration: `alembic upgrade head` to create execution_traces table
-  - Traces stored for ALL messages (not just playground) for retroactive debugging
-  - Automatic cleanup task removes traces older than 30 days
+- Phase 2 Core (2.1-2.4) and Phase 5 now COMPLETE
+- **Celery workers deferred:** No Redis, no background workers to save on hosting costs
+- **Playground:** Conversation debugger in admin dashboard (Phase 5.3)
+  - Traces stored for ALL messages for retroactive debugging
+  - Note: Trace cleanup task won't run without Celery worker
 - Onboarding flow: Business owners can set up via WhatsApp conversation in <15 min
 - Customer booking flow enhanced: Faster booking with flexible date interpretation
 - Staff tools enhanced: Better schedule display with blocked times
-- Next priority: Phase 3.3 (Daily schedule summary) or Phase 3.4 (Booking notifications)
-- To start Celery locally: `celery -A app.tasks.celery_app worker --loglevel=info`
-- To start Celery Beat: `celery -A app.tasks.celery_app beat --loglevel=info`
-- Reminders check every 5 minutes for appointments 24 hours out
 - Twilio provisioning service ready but not integrated into onboarding flow yet
-  - For MVP: Use Meta Embedded Signup (existing) or manual Twilio setup
-  - For scale: Integrate `twilio_provisioning.py` to auto-provision numbers
 - Create/Edit appointment modals were deferred - most appointments come via WhatsApp
 - Custom domain (api.yume.mx, app.yume.mx) still needs to be configured
+
+---
+
+## Future Features (To Add Later)
+
+Features deferred to reduce initial hosting costs or complexity. Add these when needed.
+
+### High Priority (Add when scaling)
+
+| Feature | Description | Why Deferred | To Implement |
+|---------|-------------|--------------|--------------|
+| **Celery Workers** | Background task processing for reminders and cleanup | Requires paid tier ($14/mo for Redis + workers) | Add Redis + 2 background workers on Render |
+| **24-Hour Reminders** | WhatsApp reminder 24 hours before appointment | Requires Celery workers | `app/tasks/reminders.py` already written |
+| **Trace Cleanup** | Auto-delete execution traces older than 30 days | Requires Celery workers | `app/tasks/cleanup.py` already written |
+| **Daily Schedule Summary** | Morning WhatsApp with day's appointments | Requires Celery workers | Phase 3.3 in workplan |
+
+### Medium Priority (Nice to have)
+
+| Feature | Description | Why Deferred | To Implement |
+|---------|-------------|--------------|--------------|
+| **New Booking Notifications** | Notify owner when appointment booked | Not critical for MVP | Phase 3.4 |
+| **Cancellation Notifications** | Notify customer when business cancels | Not critical for MVP | Phase 3.5 |
+| **Customer Management UI** | View/edit customers in dashboard | Can use admin impersonation | Phase 4.1 |
+| **Availability Management UI** | Block times via dashboard | Staff can do via WhatsApp | Phase 4.2 |
+| **Business Hours UI** | Edit hours per location | Currently set in onboarding | Phase 4.3 |
+
+### Low Priority (Future roadmap)
+
+| Feature | Description | Why Deferred | To Implement |
+|---------|-------------|--------------|--------------|
+| **Custom Domains** | api.yume.mx, app.yume.mx | Not needed for beta | Render custom domains |
+| **Create/Edit Appointment Modal** | Dashboard appointment creation | Most bookings via WhatsApp | Frontend modal |
+| **WhatsApp Template Messages** | Pre-approved message templates | Only needed for >24h window | Twilio Content API |
+| **CI/CD Pipeline** | Automated testing/deployment | Manual deploy works for now | GitHub Actions |
+| **Load Testing** | Performance verification | Not enough traffic yet | Phase 6.4 |
+| **Sentry Integration** | Error tracking | Console logs sufficient for now | Phase 7.2 |
+
+### Cost Estimate for Full Features
+
+To enable all background workers on Render:
+- Redis (Starter): ~$7/month
+- Background Worker x2 (Starter): ~$14/month
+- **Total additional cost: ~$21/month**
 
 ---
 
@@ -640,6 +678,9 @@ Based on dependencies and business value:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-01 | Migrated from Railway to Render (backend, frontend, PostgreSQL) |
+| 2026-02-01 | Deferred Celery workers (Redis, reminders, cleanup) to reduce hosting costs |
+| 2026-02-01 | Added Future Features section to track deferred functionality |
 | 2026-01-27 | Completed Phase 5.3: Conversation Debug Playground with execution tracing |
 | 2026-01-27 | Added ExecutionTrace model, ExecutionTracer service, 6 playground API endpoints |
 | 2026-01-27 | Added Celery cleanup task for execution traces (30-day retention) |
