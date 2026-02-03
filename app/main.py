@@ -46,13 +46,12 @@ app = FastAPI(
 # CORS middleware
 # Build allowed origins list
 allowed_origins = [
-    settings.frontend_url,  # Railway frontend URL or local
+    settings.frontend_url,  # Render frontend URL or local
     "http://localhost:3000",  # Local development
 ]
 
-# Add Railway and Render preview deployments in production
+# Add Render preview deployments in production
 if not settings.is_development:
-    allowed_origins.append("https://*.railway.app")
     allowed_origins.append("https://*.onrender.com")
 
 app.add_middleware(

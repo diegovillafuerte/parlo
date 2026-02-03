@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import api from '@/lib/api/client';
 
-// Meta Embedded Signup Config ID
+// Meta Embedded Signup Config ID (for FB.login options)
 const META_CONFIG_ID = '1407542027823054';
+
+// Facebook App ID (for FB.init - separate from config ID)
+const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || META_CONFIG_ID;
 
 // Yume WhatsApp number for deep linking back
 const YUME_WHATSAPP_NUMBER = '17759674528';
@@ -26,6 +29,12 @@ interface ConnectResult {
   message: string;
 }
 
+// Data received from Meta Embedded Signup message event
+interface EmbeddedSignupData {
+  phone_number_id: string;
+  waba_id: string;
+}
+
 type PageState = 'loading' | 'ready' | 'connecting' | 'success' | 'error';
 
 function ConnectPageContent() {
@@ -36,6 +45,10 @@ function ConnectPageContent() {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [connectResult, setConnectResult] = useState<ConnectResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Store embedded signup data from Meta's message event
+  const embeddedSignupDataRef = useRef<EmbeddedSignupData | null>(null);
+  const [embeddedSignupReceived, setEmbeddedSignupReceived] = useState(false);
 
   // Load session info on mount
   useEffect(() => {
@@ -61,35 +74,76 @@ function ConnectPageContent() {
     loadSession();
   }, [token]);
 
+  // Listen for Meta Embedded Signup session info via message event
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Only accept messages from Facebook
+      if (event.origin !== 'https://www.facebook.com' &&
+          event.origin !== 'https://web.facebook.com') {
+        return;
+      }
+
+      try {
+        // Parse the message data
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+
+        // Check if this is a WhatsApp Embedded Signup message
+        if (data.type === 'WA_EMBEDDED_SIGNUP') {
+          console.log('Received WA_EMBEDDED_SIGNUP data:', data);
+
+          // Extract phone_number_id and waba_id from the session info
+          if (data.data?.phone_number_id && data.data?.waba_id) {
+            embeddedSignupDataRef.current = {
+              phone_number_id: data.data.phone_number_id,
+              waba_id: data.data.waba_id,
+            };
+            setEmbeddedSignupReceived(true);
+            console.log('Stored embedded signup data:', embeddedSignupDataRef.current);
+          }
+        }
+      } catch (e) {
+        // Ignore non-JSON messages or parsing errors
+        console.debug('Ignoring non-JSON message from Facebook:', e);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   // Initialize Facebook SDK
   useEffect(() => {
     // Load Facebook SDK
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = window as any;
     if (typeof window !== 'undefined' && !win.FB) {
+      // Set up fbAsyncInit before loading the script
+      win.fbAsyncInit = () => {
+        win.FB.init({
+          appId: META_APP_ID,  // Use Facebook App ID, not Config ID
+          cookie: true,
+          xfbml: true,
+          version: 'v18.0',
+        });
+        console.log('Facebook SDK initialized with App ID:', META_APP_ID);
+      };
+
       const script = document.createElement('script');
       script.src = 'https://connect.facebook.net/en_US/sdk.js';
       script.async = true;
       script.defer = true;
       script.crossOrigin = 'anonymous';
       document.body.appendChild(script);
-
-      script.onload = () => {
-        win.fbAsyncInit = () => {
-          win.FB.init({
-            appId: META_CONFIG_ID,
-            cookie: true,
-            xfbml: true,
-            version: 'v18.0',
-          });
-        };
-      };
     }
   }, []);
 
   const handleConnect = useCallback(async () => {
     setPageState('connecting');
     setError(null);
+
+    // Reset embedded signup data for fresh attempt
+    embeddedSignupDataRef.current = null;
+    setEmbeddedSignupReceived(false);
 
     try {
       // Launch Meta Embedded Signup
@@ -113,14 +167,37 @@ function ConnectPageContent() {
       FB.login(
         async (response) => {
           if (response.authResponse?.code) {
-            // For now, we'll use the code directly
-            // In production, exchange this for a long-lived token
+            // Wait for embedded signup data from message event (with timeout)
+            const waitForSignupData = async (maxWaitMs: number = 5000): Promise<EmbeddedSignupData | null> => {
+              const startTime = Date.now();
+              while (Date.now() - startTime < maxWaitMs) {
+                if (embeddedSignupDataRef.current) {
+                  return embeddedSignupDataRef.current;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              return null;
+            };
+
             try {
+              // Wait for Meta to send the phone_number_id and waba_id via message event
+              const signupData = await waitForSignupData(5000);
+
+              if (!signupData) {
+                console.warn('Did not receive embedded signup data from Meta, proceeding with code only');
+              } else {
+                console.log('Using embedded signup data:', signupData);
+              }
+
+              // Send the authorization code and credentials to backend
+              // Backend will exchange the code for a long-lived access token
               const completeResponse = await api.post<ConnectResult>('/connect/complete', {
                 token: token,
-                phone_number_id: 'pending_' + Date.now(), // Placeholder - Meta will provide this
-                waba_id: 'pending_' + Date.now(), // Placeholder - Meta will provide this
-                access_token: response.authResponse.code,
+                // Use real phone_number_id and waba_id if available, otherwise mark as pending
+                phone_number_id: signupData?.phone_number_id || null,
+                waba_id: signupData?.waba_id || null,
+                // Send the authorization code - backend will exchange for access token
+                code: response.authResponse.code,
               });
 
               setConnectResult(completeResponse.data);
@@ -143,7 +220,7 @@ function ConnectPageContent() {
           extras: {
             setup: {},
             featureType: '',
-            sessionInfoVersion: '2',
+            sessionInfoVersion: '2',  // Request session info via message event
           },
         }
       );

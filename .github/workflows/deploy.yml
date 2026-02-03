@@ -1,4 +1,4 @@
-name: Deploy to Railway
+name: Test and Deploy
 
 on:
   push:
@@ -85,8 +85,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to Railway
+      - name: Deploy notification
         run: |
-          echo "Railway auto-deploys on git push to main"
-          echo "Backend: ${{ secrets.RAILWAY_BACKEND_URL }}"
-          echo "Frontend: ${{ secrets.RAILWAY_FRONTEND_URL }}"
+          echo "Render auto-deploys on git push to main"
+          echo "Backend: https://yume-backend.onrender.com"
+          echo "Frontend: https://yume-frontend.onrender.com"
+          echo "Configure deploy hooks in Render dashboard for manual triggers"

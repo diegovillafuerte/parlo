@@ -194,10 +194,10 @@ Yume differentiators:
 - **Onboarding:** Meta Embedded Signup for connecting existing WhatsApp Business numbers
 - **Webhooks:** Receive messages via Twilio webhook
 
-**Infrastructure (deployed on Railway):**
-- **Hosting:** Railway (backend + frontend deployed)
-- **Database:** Railway PostgreSQL
-- **Redis:** Railway Redis
+**Infrastructure (deployed on Render):**
+- **Hosting:** Render (backend + frontend deployed)
+- **Database:** Render PostgreSQL
+- **Redis:** Not deployed (Celery workers deferred to save costs)
 - **Secrets:** Environment variables (12-factor style)
 
 **Frontend (later, not v1 priority):**
@@ -1469,30 +1469,30 @@ These requirements apply to the entire system.
 
 ## 7. Infrastructure Requirements
 
-### 7.1 Database (Railway PostgreSQL)
+### 7.1 Database (Render PostgreSQL)
 | # | Requirement | Status |
 |---|-------------|--------|
-| 7.1.1 | PostgreSQL 15+ deployed on Railway | [x] |
+| 7.1.1 | PostgreSQL 15+ deployed on Render | [x] |
 | 7.1.2 | Alembic migrations working | [x] |
 | 7.1.3 | All entity migrations created | [x] |
 | 7.1.4 | Indexes on frequently queried fields | [ ] |
 | 7.1.5 | Database backups configured | [ ] |
 
-### 7.2 Redis (Railway)
+### 7.2 Redis (Deferred)
 | # | Requirement | Status |
 |---|-------------|--------|
-| 7.2.1 | Redis deployed on Railway | [x] |
-| 7.2.2 | Redis connection handling | [x] |
+| 7.2.1 | Redis deployed | [ ] Deferred |
+| 7.2.2 | Redis connection handling | [x] Code ready |
 
-### 7.3 Deployment (Railway)
+### 7.3 Deployment (Render)
 | # | Requirement | Status |
 |---|-------------|--------|
-| 7.3.1 | Backend deployed and accessible on Railway | [x] |
-| 7.3.2 | Frontend deployed and accessible on Railway | [x] |
+| 7.3.1 | Backend deployed and accessible on Render | [x] |
+| 7.3.2 | Frontend deployed and accessible on Render | [x] |
 | 7.3.3 | HTTPS configured | [x] |
 | 7.3.4 | Domain configured (api.yume.mx, app.yume.mx) | [ ] |
 | 7.3.5 | Environment variables configured | [x] |
-| 7.3.6 | Celery worker running | [ ] |
+| 7.3.6 | Celery worker running | [ ] Deferred |
 
 ### 7.4 Monitoring
 | # | Requirement | Status |

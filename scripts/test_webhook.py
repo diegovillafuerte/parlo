@@ -4,16 +4,24 @@ This script helps you test the message router locally without needing
 actual WhatsApp credentials or ngrok.
 
 Usage:
-    # Test webhook verification (GET request)
-    python scripts/test_webhook.py --verify
+    # Test Meta webhook verification (GET request)
+    python scripts/test_webhook.py --verify --meta
 
-    # Test message webhook (POST request)
-    python scripts/test_webhook.py --customer "Hola, quiero una cita"
-    python scripts/test_webhook.py --staff "Qué tengo hoy?"
+    # Test Meta message webhook (POST request)
+    python scripts/test_webhook.py --customer "Hola" --meta
+    python scripts/test_webhook.py --staff "Qué tengo hoy?" --meta
+
+    # Test Twilio webhook (POST request - form data)
+    python scripts/test_webhook.py --customer "Hola" --twilio
+    python scripts/test_webhook.py --staff "Qué tengo hoy?" --twilio
+
+    # Default is Meta format
+    python scripts/test_webhook.py --customer "Hola"
 """
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 # Add parent directory to path
@@ -26,21 +34,26 @@ from app.config import get_settings
 
 settings = get_settings()
 
+BASE_URL = "http://localhost:8000/api/v1/webhooks"
 
-async def send_test_webhook(
+
+async def send_meta_webhook(
     message: str,
     phone_number_id: str = "test_phone_123",
     sender_phone: str = "525587654321",
     sender_name: str = "Test User",
 ):
-    """Send a test webhook to the local server.
+    """Send a test webhook in Meta Cloud API format.
 
     Args:
         message: Message content to send
-        phone_number_id: Our WhatsApp number ID
+        phone_number_id: Business's WhatsApp phone number ID
         sender_phone: Sender's phone number
         sender_name: Sender's name
     """
+    # Ensure phone doesn't have + prefix for Meta format
+    sender_phone_clean = sender_phone.lstrip("+")
+
     # Meta's webhook payload format
     webhook_payload = {
         "object": "whatsapp_business_account",
@@ -58,15 +71,15 @@ async def send_test_webhook(
                             },
                             "contacts": [
                                 {
-                                    "wa_id": sender_phone,
+                                    "wa_id": sender_phone_clean,
                                     "profile": {"name": sender_name},
                                 }
                             ],
                             "messages": [
                                 {
-                                    "from": sender_phone,
-                                    "id": f"wamid_test_{asyncio.get_event_loop().time()}",
-                                    "timestamp": "1234567890",
+                                    "from": sender_phone_clean,
+                                    "id": f"wamid_test_{int(time.time() * 1000)}",
+                                    "timestamp": str(int(time.time())),
                                     "type": "text",
                                     "text": {"body": message},
                                 }
@@ -81,26 +94,66 @@ async def send_test_webhook(
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                "http://localhost:8000/api/v1/webhooks/whatsapp",
+                f"{BASE_URL}/whatsapp/meta",
                 json=webhook_payload,
                 timeout=30.0,
             )
             response.raise_for_status()
-            print(f"✅ Webhook sent successfully")
+            print(f"✅ Meta webhook sent successfully")
             print(f"Response: {response.json()}")
         except httpx.HTTPError as e:
             print(f"❌ Error: {e}")
-            if hasattr(e, "response"):
+            if hasattr(e, "response") and e.response is not None:
                 print(f"Response: {e.response.text}")
 
 
-async def test_webhook_verification():
-    """Test webhook verification (GET request).
+async def send_twilio_webhook(
+    message: str,
+    to_number: str = "+14155238886",  # Yume's Twilio number
+    sender_phone: str = "+525587654321",
+    sender_name: str = "Test User",
+):
+    """Send a test webhook in Twilio format (form-encoded).
+
+    Args:
+        message: Message content to send
+        to_number: Yume's Twilio WhatsApp number (To field)
+        sender_phone: Sender's phone number
+        sender_name: Sender's name
+    """
+    # Twilio sends form-encoded data
+    form_data = {
+        "MessageSid": f"SM_test_{int(time.time() * 1000)}",
+        "From": f"whatsapp:{sender_phone}",
+        "To": f"whatsapp:{to_number}",
+        "Body": message,
+        "ProfileName": sender_name,
+        "NumMedia": "0",
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{BASE_URL}/whatsapp",
+                data=form_data,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            print(f"✅ Twilio webhook sent successfully")
+            print(f"Response: {response.text[:200]}")
+        except httpx.HTTPError as e:
+            print(f"❌ Error: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
+
+
+async def test_meta_verification():
+    """Test Meta webhook verification (GET request).
 
     This simulates what Meta does when you register your webhook URL.
     """
     print("\n" + "=" * 80)
-    print("🔍 Testing WEBHOOK VERIFICATION (GET)")
+    print("🔍 Testing META WEBHOOK VERIFICATION (GET)")
     print("=" * 80)
 
     params = {
@@ -112,7 +165,7 @@ async def test_webhook_verification():
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                "http://localhost:8000/api/v1/webhooks/whatsapp",
+                f"{BASE_URL}/whatsapp/meta",
                 params=params,
                 timeout=10.0,
             )
@@ -128,38 +181,28 @@ async def test_webhook_verification():
 
         except httpx.HTTPError as e:
             print(f"❌ Error: {e}")
-            if hasattr(e, "response"):
+            if hasattr(e, "response") and e.response is not None:
                 print(f"Response: {e.response.text}")
 
 
-async def test_customer_message():
-    """Test a message from a customer."""
+async def test_twilio_status():
+    """Test Twilio webhook status endpoint."""
     print("\n" + "=" * 80)
-    print("🟢 Testing CUSTOMER message")
+    print("🔍 Testing TWILIO WEBHOOK STATUS (GET)")
     print("=" * 80)
 
-    await send_test_webhook(
-        message="Hola, quiero una cita para un corte de cabello",
-        sender_phone="525587654321",  # Not registered as staff
-        sender_name="Juan Pérez",
-    )
-
-
-async def test_staff_message():
-    """Test a message from a staff member.
-
-    NOTE: You need to have a staff member registered with this phone number
-    in the database for this to route correctly!
-    """
-    print("\n" + "=" * 80)
-    print("🔵 Testing STAFF message")
-    print("=" * 80)
-
-    await send_test_webhook(
-        message="Qué tengo hoy?",
-        sender_phone="525512345678",  # This should be registered as staff
-        sender_name="Pedro González",
-    )
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{BASE_URL}/whatsapp/status",
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            print(f"✅ Twilio status: {response.json()}")
+        except httpx.HTTPError as e:
+            print(f"❌ Error: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response: {e.response.text}")
 
 
 async def main():
@@ -185,8 +228,8 @@ async def main():
     parser.add_argument(
         "--phone",
         type=str,
-        default="525587654321",
-        help="Sender phone number (default: 525587654321)",
+        default="+525587654321",
+        help="Sender phone number (default: +525587654321)",
     )
     parser.add_argument(
         "--name",
@@ -194,28 +237,62 @@ async def main():
         default="Test User",
         help="Sender name (default: Test User)",
     )
+    parser.add_argument(
+        "--phone-number-id",
+        type=str,
+        default="test_phone_123",
+        help="Business phone number ID for Meta format (default: test_phone_123)",
+    )
+    parser.add_argument(
+        "--meta",
+        action="store_true",
+        default=True,
+        help="Use Meta Cloud API format (default)",
+    )
+    parser.add_argument(
+        "--twilio",
+        action="store_true",
+        help="Use Twilio format instead of Meta",
+    )
 
     args = parser.parse_args()
 
+    # Determine format
+    use_twilio = args.twilio
+
     if args.verify:
-        await test_webhook_verification()
-    elif args.customer:
-        await send_test_webhook(
-            message=args.customer,
-            sender_phone=args.phone,
-            sender_name=args.name,
-        )
-    elif args.staff:
-        await send_test_webhook(
-            message=args.staff,
-            sender_phone=args.phone,
-            sender_name=args.name,
-        )
+        if use_twilio:
+            await test_twilio_status()
+        else:
+            await test_meta_verification()
+    elif args.customer or args.staff:
+        message = args.customer or args.staff
+        print("\n" + "=" * 80)
+        print(f"{'🟢 CUSTOMER' if args.customer else '🔵 STAFF'} message via {'TWILIO' if use_twilio else 'META'}")
+        print("=" * 80)
+        print(f"Phone: {args.phone}")
+        print(f"Name: {args.name}")
+        print(f"Message: {message}")
+        print("=" * 80)
+
+        if use_twilio:
+            await send_twilio_webhook(
+                message=message,
+                sender_phone=args.phone,
+                sender_name=args.name,
+            )
+        else:
+            await send_meta_webhook(
+                message=message,
+                phone_number_id=args.phone_number_id,
+                sender_phone=args.phone,
+                sender_name=args.name,
+            )
     else:
-        # Run both tests
-        await test_customer_message()
-        await asyncio.sleep(1)
-        await test_staff_message()
+        # Run verification tests for both
+        await test_meta_verification()
+        await asyncio.sleep(0.5)
+        await test_twilio_status()
 
 
 if __name__ == "__main__":

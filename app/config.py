@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     def async_database_url(self) -> str:
         """Get database URL with asyncpg driver.
 
-        Render/Railway provide postgresql:// but SQLAlchemy async needs postgresql+asyncpg://
+        Render provides postgresql:// but SQLAlchemy async needs postgresql+asyncpg://
         This property ensures the correct driver is always used.
         """
         url = self.database_url

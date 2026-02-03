@@ -122,10 +122,10 @@ Yume: Hola Pedro, aquí está tu agenda para hoy viernes:
 - Anthropic Claude API (conversational AI)
 - Meta WhatsApp Cloud API (direct, no BSP)
 
-**Infrastructure (initial)**
+**Infrastructure**
 - Docker Compose (local development)
-- Railway/Render/Fly.io (hosting)
-- Managed Postgres and Redis
+- Render (production hosting)
+- Render PostgreSQL (managed database)
 
 ## Project Structure
 

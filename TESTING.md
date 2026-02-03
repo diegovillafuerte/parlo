@@ -309,7 +309,7 @@ Once local testing is complete:
    ```
 
 3. **Deploy to Production:**
-   - Set up hosting (Railway, Render, AWS, etc.)
+   - Set up hosting on Render (see render.yaml for Infrastructure as Code)
    - Configure webhook URL in Meta Developer Console
    - Test with real WhatsApp messages
 

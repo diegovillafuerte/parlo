@@ -2,7 +2,7 @@
 
 This document tracks progress toward production readiness. Requirements are from `docs/PROJECT_SPEC.md`.
 
-**Last Updated:** 2026-02-01 (Migrated to Render, deferred Celery workers)
+**Last Updated:** 2026-02-02 (Added Meta Cloud API webhook endpoints for WhatsApp connection flow)
 
 ---
 
@@ -319,12 +319,24 @@ Phase 1 established the core architecture. All items below are implemented.
 - [x] Meta Embedded Signup integration (for connecting existing numbers)
 - [x] Store phone_number_id and access tokens per organization
 - [x] Multi-business webhook routing based on phone_number_id
+- [x] Meta Cloud API webhook endpoint (receive messages from connected business numbers)
+- [x] Webhook signature verification (HMAC-SHA256)
+- [x] Webhook registration with Meta after business connects
 
 **Implementation:**
 - `app/services/twilio_provisioning.py` - Service to list, purchase, and configure Twilio numbers
 - Organizations store `whatsapp_phone_number_id` and `whatsapp_access_token`
 - Message router identifies org by incoming phone_number_id
 - Supports hybrid approach: Yume provisioned numbers + business's own numbers
+- `GET /api/v1/webhooks/whatsapp/meta` - Webhook verification endpoint for Meta
+- `POST /api/v1/webhooks/whatsapp/meta` - Receive messages from Meta Cloud API
+- `register_webhook_with_meta()` in connect.py - Subscribe to WABA webhooks after connection
+- Token expiry stored in org settings (60 days from connection)
+
+**Manual Setup Required:**
+1. Configure Meta App Dashboard with webhook URL: `https://yume-backend.onrender.com/api/v1/webhooks/whatsapp/meta`
+2. Set verify token to match `META_WEBHOOK_VERIFY_TOKEN` env var (default: `yume-webhook-token`)
+3. Subscribe to `messages` field
 
 **Acceptance:** Each business can connect their own WhatsApp number or get a Yume-provisioned number.
 
@@ -678,13 +690,18 @@ To enable all background workers on Render:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-02 | Added Meta Cloud API webhook endpoints (GET verify + POST receive messages) |
+| 2026-02-02 | Added webhook registration with Meta after business connects via Embedded Signup |
+| 2026-02-02 | Added signature verification for Meta webhooks (HMAC-SHA256) |
+| 2026-02-02 | Updated test_webhook.py script to support both Meta and Twilio formats |
+| 2026-02-02 | Updated all documentation to reflect Render deployment (removed Railway references) |
 | 2026-02-01 | Migrated from Railway to Render (backend, frontend, PostgreSQL) |
 | 2026-02-01 | Deferred Celery workers (Redis, reminders, cleanup) to reduce hosting costs |
 | 2026-02-01 | Added Future Features section to track deferred functionality |
 | 2026-01-27 | Completed Phase 5.3: Conversation Debug Playground with execution tracing |
 | 2026-01-27 | Added ExecutionTrace model, ExecutionTracer service, 6 playground API endpoints |
 | 2026-01-27 | Added Celery cleanup task for execution traces (30-day retention) |
-| 2026-01-27 | Updated PROJECT_SPEC.md: Railway deployment, Twilio WhatsApp API, GPT-5.2 |
+| 2026-01-27 | Updated PROJECT_SPEC.md: Twilio WhatsApp API, GPT-5.2 |
 | 2026-01-27 | Completed Phase 7.3: Deployed on Railway (backend, frontend, PostgreSQL, Redis) |
 | 2026-01-26 | Completed Phase 5.1: Full onboarding conversation flow with staff collection |
 | 2026-01-26 | Completed Phase 5.2: Twilio number provisioning service + Meta Embedded Signup |

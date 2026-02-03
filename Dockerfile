@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir .
 # Make startup script executable
 RUN chmod +x start.sh
 
-# Expose port (Railway auto-detects this)
+# Expose port (Render uses this for health checks)
 EXPOSE 8000
 
 # Run startup script

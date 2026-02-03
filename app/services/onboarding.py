@@ -53,6 +53,7 @@ DEFAULT_BUSINESS_HOURS = {
 
 
 from app.config import get_settings
+from app.services.twilio_provisioning import provision_number_for_business
 
 # Get frontend URL from config
 _settings = get_settings()
@@ -189,6 +190,20 @@ ONBOARDING_TOOLS = [
             "properties": {},
         },
     },
+    {
+        "name": "provision_twilio_number",
+        "description": "Provisiona un nuevo número de WhatsApp dedicado para el negocio usando Twilio. Úsalo cuando el usuario NO tiene una cuenta de WhatsApp Business existente y quiere que Yume le proporcione un número dedicado.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "country_code": {
+                    "type": "string",
+                    "description": "Código de país para el número (MX para México, US para Estados Unidos). Default: MX",
+                    "default": "MX",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -317,12 +332,27 @@ En 2-3 minutos configuramos tu cuenta:
 - Pregunta si todos hacen todos los servicios o hay especialidades
 - El dueño ya se registra automáticamente con su número actual
 
-### Paso 5: Confirmación y Activación
+### Paso 5: Conexión de WhatsApp (DOS OPCIONES)
+Cuando el usuario termine de agregar servicios, ofrece DOS opciones para conectar su número:
+
+**Opción A: Conectar WhatsApp Business existente (Recomendado)**
+- Si el usuario YA tiene una cuenta de WhatsApp Business
+- Usa `send_whatsapp_connect_link` para enviar el link de conexión
+- El usuario conectará su número existente desde el navegador
+
+**Opción B: Obtener un número dedicado de Yume**
+- Si el usuario NO tiene WhatsApp Business
+- Usa `provision_twilio_number` para obtener un número nuevo
+- Yume le asignará un número de México para su negocio
+
+Pregunta: "¿Ya tienes una cuenta de WhatsApp Business, o prefieres que te asignemos un número dedicado para tu negocio?"
+
+### Paso 6: Confirmación y Activación
 - Muestra un resumen de todo lo configurado
 - Pregunta "¿Todo correcto? ¿Activamos tu cuenta?"
 - Si confirman, usa `complete_onboarding` para crear la cuenta
 - Después usa `send_dashboard_link` para enviar el link al dashboard
-- Explica que sus clientes podrán escribir a este mismo número para agendar
+- Explica que sus clientes podrán escribir al número configurado para agendar
 
 ## Instrucciones Importantes
 - Habla en español mexicano natural, usa "tú" no "usted"
@@ -709,6 +739,67 @@ class OnboardingHandler:
                 )
             }
 
+        elif tool_name == "provision_twilio_number":
+            # Verify we have minimum required data before provisioning
+            if not collected.get("business_name"):
+                return {"success": False, "error": "Primero necesito el nombre del negocio"}
+            if not collected.get("services"):
+                return {"success": False, "error": "Primero necesito al menos un servicio"}
+
+            business_name = collected["business_name"]
+            country_code = tool_input.get("country_code", "MX")
+
+            try:
+                # Provision a new Twilio WhatsApp number
+                result = await provision_number_for_business(
+                    business_name=business_name,
+                    webhook_base_url=_settings.app_base_url,
+                    country_code=country_code,
+                )
+
+                if not result:
+                    return {
+                        "success": False,
+                        "error": "No se pudo provisionar un número. Por favor intenta conectar tu número de WhatsApp Business existente.",
+                        "fallback_message": (
+                            "No pudimos obtener un número nuevo en este momento. "
+                            "¿Tienes una cuenta de WhatsApp Business? "
+                            "Si es así, puedo enviarte el link para conectarla."
+                        )
+                    }
+
+                # Store the provisioned number in session
+                collected["twilio_provisioned_number"] = result["phone_number"]
+                collected["twilio_phone_number_sid"] = result["phone_number_sid"]
+                session.collected_data = collected
+                await self.db.flush()
+
+                logger.info(f"Provisioned Twilio number for {business_name}: {result['phone_number']}")
+
+                return {
+                    "success": True,
+                    "message": "Número provisionado exitosamente",
+                    "phone_number": result["phone_number"],
+                    "phone_number_sid": result["phone_number_sid"],
+                    "formatted_message": (
+                        f"¡Listo! Te asigné el número {result['phone_number']} para tu negocio.\n\n"
+                        f"Este será el número donde tus clientes pueden escribir para agendar citas.\n\n"
+                        f"¿Quieres que active tu cuenta ahora?"
+                    )
+                }
+
+            except Exception as e:
+                logger.error(f"Error provisioning Twilio number: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "fallback_message": (
+                        "Hubo un problema al obtener tu número. "
+                        "¿Tienes una cuenta de WhatsApp Business? "
+                        "Puedo enviarte el link para conectarla en su lugar."
+                    )
+                }
+
         return {"error": f"Unknown tool: {tool_name}"}
 
     async def _create_organization(self, session: OnboardingSession) -> Organization:
@@ -731,19 +822,38 @@ class OnboardingHandler:
             address_parts.append(collected["city"])
         full_address = ", ".join(address_parts) if address_parts else ""
 
+        # Determine WhatsApp configuration:
+        # Option 1: Twilio provisioned number (stored in collected_data)
+        # Option 2: Meta Embedded Signup (stored in session fields)
+        # Option 3: No WhatsApp setup yet (use owner's phone as placeholder)
+        org_settings = {
+            "language": "es",
+            "currency": "MXN",
+            "business_type": collected.get("business_type", "salon"),
+        }
+
+        if collected.get("twilio_provisioned_number"):
+            # Twilio provisioned number path
+            whatsapp_phone_number_id = collected["twilio_phone_number_sid"]
+            org_settings["whatsapp_provider"] = "twilio"
+            org_settings["twilio_phone_number"] = collected["twilio_provisioned_number"]
+            org_settings["twilio_phone_number_sid"] = collected["twilio_phone_number_sid"]
+            logger.info(f"Using Twilio provisioned number: {collected['twilio_provisioned_number']}")
+        else:
+            # Meta Embedded Signup or no setup yet - use owner phone as placeholder
+            whatsapp_phone_number_id = session.phone_number
+            org_settings["whatsapp_provider"] = "pending"  # Will be set when they connect
+            logger.info(f"No WhatsApp number provisioned, using owner phone as placeholder")
+
         # 1. Create Organization
         org = Organization(
             name=collected["business_name"],
             phone_country_code=self._extract_country_code(session.phone_number),
             phone_number=session.phone_number,
-            whatsapp_phone_number_id=session.phone_number,  # Use phone as ID for now
+            whatsapp_phone_number_id=whatsapp_phone_number_id,
             timezone="America/Mexico_City",
             status=OrganizationStatus.ACTIVE.value,
-            settings={
-                "language": "es",
-                "currency": "MXN",
-                "business_type": collected.get("business_type", "salon"),
-            },
+            settings=org_settings,
         )
         self.db.add(org)
         await self.db.flush()
