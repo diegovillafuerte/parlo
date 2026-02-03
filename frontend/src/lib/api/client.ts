@@ -29,9 +29,16 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('organization');
-        window.location.href = '/login';
+        const isAdminRequest = error.config?.url?.startsWith('/admin');
+
+        if (isAdminRequest) {
+          localStorage.removeItem('admin_token');
+          window.location.href = '/admin/login';
+        } else {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('organization');
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
