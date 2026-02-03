@@ -150,7 +150,7 @@ async def list_conversations(
         select(Conversation)
         .options(
             selectinload(Conversation.organization),
-            selectinload(Conversation.customer),
+            selectinload(Conversation.end_customer),
         )
         .order_by(Conversation.last_message_at.desc().nullslast())
     )
@@ -189,7 +189,7 @@ async def get_conversation_with_messages(
         select(Conversation)
         .options(
             selectinload(Conversation.organization),
-            selectinload(Conversation.customer),
+            selectinload(Conversation.end_customer),
             selectinload(Conversation.messages),
         )
         .where(Conversation.id == conversation_id)
