@@ -37,16 +37,15 @@ from app.models import (
     MessageContentType,
     MessageDirection,
     MessageSenderType,
-    OnboardingSession,
-    OnboardingState,
     Organization,
+    OrganizationStatus,
     YumeUser,
 )
 from app.services import customer as customer_service
 from app.services import staff as staff_service
 from app.services.conversation import ConversationHandler
 from app.services.customer_flows import CustomerFlowHandler
-from app.services.onboarding import OnboardingHandler
+from app.services.onboarding import OnboardingHandler, OnboardingState
 from app.services.staff_onboarding import StaffOnboardingHandler
 from app.services.whatsapp import WhatsAppClient
 
@@ -250,8 +249,55 @@ class MessageRouter:
             }
 
         elif len(registrations) == 1:
-            # CASE 2a: Staff of exactly 1 business → Business Management
+            # Staff of exactly 1 business
             staff, org = registrations[0]
+
+            # Check if org is still in onboarding
+            if org.status == OrganizationStatus.ONBOARDING.value:
+                # Continue onboarding flow
+                logger.info(
+                    f"\n🟠 CASE 1b: BUSINESS ONBOARDING (Existing)\n"
+                    f"   Staff: {staff.name} at org {org.id} (status: {org.status})\n"
+                    f"   → Continuing onboarding flow"
+                )
+
+                if tracer:
+                    with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
+                        step.set_input({"sender_phone": sender_phone})
+                        step.set_output({
+                            "case": "1b",
+                            "route": "business_onboarding",
+                            "organization_id": str(org.id),
+                            "onboarding_state": org.onboarding_state,
+                            "reason": "Continuing existing onboarding",
+                        })
+
+                onboarding_handler = OnboardingHandler(db=self.db)
+                response_text = await onboarding_handler.handle_message(org, message_content)
+
+                # Check if onboarding just completed
+                await self.db.refresh(org)
+                if org.status == OrganizationStatus.ACTIVE.value:
+                    logger.info(f"   🎉 Onboarding completed! Organization activated.")
+
+                if not skip_whatsapp_send:
+                    await self.whatsapp.send_text_message(
+                        phone_number_id=phone_number_id,
+                        to=sender_phone,
+                        message=response_text,
+                    )
+
+                await self.db.commit()
+                return {
+                    "status": "success",
+                    "case": "1b",
+                    "sender_type": "onboarding",
+                    "organization_id": str(org.id),
+                    "route": "business_onboarding",
+                    "response_text": response_text,
+                }
+
+            # CASE 2a: Staff of exactly 1 ACTIVE business → Business Management
             logger.info(
                 f"\n🔵 CASE 2a: BUSINESS MANAGEMENT (Central Number)\n"
                 f"   Staff: {staff.name} at {org.name}\n"
@@ -575,6 +621,9 @@ class MessageRouter:
     ) -> str:
         """Handle message from user in business onboarding flow (Case 1).
 
+        Creates an Organization immediately with status=ONBOARDING, then
+        handles the onboarding conversation.
+
         Args:
             sender_phone: Sender's phone
             message_content: Message text
@@ -587,41 +636,39 @@ class MessageRouter:
         """
         onboarding_handler = OnboardingHandler(db=self.db)
 
-        # Get or create onboarding session
-        session = await onboarding_handler.get_or_create_session(
+        # Get or create organization (creates with ONBOARDING status)
+        org = await onboarding_handler.get_or_create_organization(
             phone_number=sender_phone,
             sender_name=sender_name,
         )
 
-        logger.info(f"   Onboarding session state: {session.state}")
+        logger.info(f"   Organization state: status={org.status}, onboarding_state={org.onboarding_state}")
 
         # Check if onboarding was already completed - redirect to business management
-        if session.state == OnboardingState.COMPLETED.value and session.organization_id:
-            org = await self.db.get(Organization, session.organization_id)
-            if org:
-                staff = await staff_service.get_staff_by_phone(
-                    self.db, org.id, sender_phone
+        if org.status == OrganizationStatus.ACTIVE.value:
+            staff = await staff_service.get_staff_by_phone(
+                self.db, org.id, sender_phone
+            )
+            if staff:
+                logger.info(
+                    f"   Onboarding already complete, redirecting to business management for {org.name}"
                 )
-                if staff:
-                    logger.info(
-                        f"   Onboarding already complete, redirecting to business management for {org.name}"
-                    )
-                    return await self._handle_business_management(
-                        org=org,
-                        staff=staff,
-                        message_content=message_content,
-                        sender_phone=sender_phone,
-                        message_id=message_id,
-                        tracer=tracer,
-                    )
+                return await self._handle_business_management(
+                    org=org,
+                    staff=staff,
+                    message_content=message_content,
+                    sender_phone=sender_phone,
+                    message_id=message_id,
+                    tracer=tracer,
+                )
 
         # Continue onboarding conversation
-        response = await onboarding_handler.handle_message(session, message_content)
+        response = await onboarding_handler.handle_message(org, message_content)
 
         # Check if onboarding just completed
-        await self.db.refresh(session)
-        if session.state == OnboardingState.COMPLETED.value:
-            logger.info(f"   🎉 Onboarding completed! Organization created.")
+        await self.db.refresh(org)
+        if org.status == OrganizationStatus.ACTIVE.value:
+            logger.info(f"   🎉 Onboarding completed! Organization activated.")
 
         return response
 

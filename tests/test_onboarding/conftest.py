@@ -1,5 +1,6 @@
 """Onboarding-specific test fixtures and mocks."""
 
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -9,15 +10,15 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
-    OnboardingSession,
-    OnboardingState,
     Organization,
     OrganizationStatus,
     Location,
     YumeUser,
     YumeUserRole,
+    YumeUserPermissionLevel,
     ServiceType,
 )
+from app.services.onboarding import OnboardingState
 
 # Aliases for readability
 Staff = YumeUser
@@ -119,50 +120,108 @@ def mock_whatsapp_client() -> MagicMock:
 
 
 @pytest_asyncio.fixture
-async def onboarding_session_initiated(db: AsyncSession) -> OnboardingSession:
-    """Create an onboarding session in INITIATED state."""
-    session = OnboardingSession(
+async def onboarding_org_initiated(db: AsyncSession) -> Organization:
+    """Create an organization in ONBOARDING status, INITIATED state."""
+    org = Organization(
         id=uuid4(),
+        name=None,  # Not yet collected
+        phone_country_code="52",
         phone_number="+525551234567",
-        owner_name="Carlos",
-        state=OnboardingState.INITIATED.value,
-        collected_data={"owner_name": "Carlos"},
-        conversation_context={},
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.INITIATED,
+        onboarding_data={"owner_name": "Carlos"},
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
     )
-    db.add(session)
+    db.add(org)
     await db.flush()
-    return session
+
+    # Create placeholder location
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    # Create owner staff
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Carlos",
+        phone_number="+525551234567",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
 
 
 @pytest_asyncio.fixture
-async def onboarding_session_collecting_services(db: AsyncSession) -> OnboardingSession:
-    """Create an onboarding session in COLLECTING_SERVICES state."""
-    session = OnboardingSession(
+async def onboarding_org_collecting_services(db: AsyncSession) -> Organization:
+    """Create an organization in COLLECTING_SERVICES state."""
+    org = Organization(
         id=uuid4(),
+        name="Salón Bella",
+        phone_country_code="52",
         phone_number="+525559876543",
-        owner_name="Maria",
-        state=OnboardingState.COLLECTING_SERVICES.value,
-        collected_data={
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.COLLECTING_SERVICES,
+        onboarding_data={
             "owner_name": "Maria",
             "business_name": "Salón Bella",
             "business_type": "salon",
         },
-        conversation_context={},
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
     )
-    db.add(session)
+    db.add(org)
     await db.flush()
-    return session
+
+    # Create placeholder location
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    # Create owner staff
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Maria",
+        phone_number="+525559876543",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
 
 
 @pytest_asyncio.fixture
-async def onboarding_session_with_services(db: AsyncSession) -> OnboardingSession:
-    """Create an onboarding session with business info and services."""
-    session = OnboardingSession(
+async def onboarding_org_with_services(db: AsyncSession) -> Organization:
+    """Create an organization with business info and services collected."""
+    org = Organization(
         id=uuid4(),
+        name="Barbería Don Juan",
+        phone_country_code="52",
         phone_number="+525551112222",
-        owner_name="Juan",
-        state=OnboardingState.COLLECTING_SERVICES.value,
-        collected_data={
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.COLLECTING_SERVICES,
+        onboarding_data={
             "owner_name": "Juan",
             "business_name": "Barbería Don Juan",
             "business_type": "barbershop",
@@ -171,22 +230,50 @@ async def onboarding_session_with_services(db: AsyncSession) -> OnboardingSessio
                 {"name": "Corte y barba", "duration_minutes": 45, "price": 200},
             ],
         },
-        conversation_context={},
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
     )
-    db.add(session)
+    db.add(org)
     await db.flush()
-    return session
+
+    # Create placeholder location
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    # Create owner staff
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Juan",
+        phone_number="+525551112222",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
 
 
 @pytest_asyncio.fixture
-async def onboarding_session_ready_for_completion(db: AsyncSession) -> OnboardingSession:
-    """Create an onboarding session ready for complete_onboarding."""
-    session = OnboardingSession(
+async def onboarding_org_ready_for_completion(db: AsyncSession) -> Organization:
+    """Create an organization ready for complete_onboarding."""
+    org = Organization(
         id=uuid4(),
+        name="Spa Relajación",
+        phone_country_code="52",
         phone_number="+525553334444",
-        owner_name="Ana",
-        state=OnboardingState.COLLECTING_SERVICES.value,
-        collected_data={
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.COLLECTING_SERVICES,
+        onboarding_data={
             "owner_name": "Ana",
             "business_name": "Spa Relajación",
             "business_type": "spa",
@@ -204,22 +291,50 @@ async def onboarding_session_ready_for_completion(db: AsyncSession) -> Onboardin
                 "sunday": {"closed": True},
             },
         },
-        conversation_context={},
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
     )
-    db.add(session)
+    db.add(org)
     await db.flush()
-    return session
+
+    # Create placeholder location
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    # Create owner staff
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Ana",
+        phone_number="+525553334444",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
 
 
 @pytest_asyncio.fixture
-async def onboarding_session_with_twilio_number(db: AsyncSession) -> OnboardingSession:
-    """Create an onboarding session with a Twilio provisioned number."""
-    session = OnboardingSession(
+async def onboarding_org_with_twilio_number(db: AsyncSession) -> Organization:
+    """Create an organization with a Twilio provisioned number in onboarding data."""
+    org = Organization(
         id=uuid4(),
+        name="Barbería Don Pedro",
+        phone_country_code="52",
         phone_number="+525555556666",
-        owner_name="Pedro",
-        state=OnboardingState.COLLECTING_SERVICES.value,
-        collected_data={
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.COLLECTING_SERVICES,
+        onboarding_data={
             "owner_name": "Pedro",
             "business_name": "Barbería Don Pedro",
             "business_type": "barbershop",
@@ -229,16 +344,42 @@ async def onboarding_session_with_twilio_number(db: AsyncSession) -> OnboardingS
             "twilio_provisioned_number": "+525512345678",
             "twilio_phone_number_sid": "PN123456789",
         },
-        conversation_context={},
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
     )
-    db.add(session)
+    db.add(org)
     await db.flush()
-    return session
+
+    # Create placeholder location
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    # Create owner staff
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Pedro",
+        phone_number="+525555556666",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
 
 
 @pytest_asyncio.fixture
 async def organization_with_twilio_number(db: AsyncSession) -> Organization:
-    """Create an organization with a Twilio provisioned WhatsApp number."""
+    """Create an ACTIVE organization with a Twilio provisioned WhatsApp number."""
     org = Organization(
         id=uuid4(),
         name="Barbería Don Pedro",
@@ -247,6 +388,9 @@ async def organization_with_twilio_number(db: AsyncSession) -> Organization:
         whatsapp_phone_number_id="+525512345678",  # The actual phone number
         timezone="America/Mexico_City",
         status=OrganizationStatus.ACTIVE.value,
+        onboarding_state=OnboardingState.COMPLETED,
+        onboarding_data={},
+        onboarding_conversation_context={},
         settings={
             "whatsapp_provider": "twilio",
             "twilio_phone_number": "+525512345678",
@@ -282,12 +426,102 @@ async def organization_with_staff(
         name="Pedro",
         phone_number="+525555556666",
         role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
     await db.flush()
 
     return org, staff, location
+
+
+# Backwards compatibility aliases for old fixture names
+@pytest_asyncio.fixture
+async def onboarding_session_initiated(db: AsyncSession) -> Organization:
+    """Alias for onboarding_org_initiated for backwards compatibility."""
+    org = Organization(
+        id=uuid4(),
+        name=None,
+        phone_country_code="52",
+        phone_number="+525551234567",
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.INITIATED,
+        onboarding_data={"owner_name": "Carlos"},
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
+    )
+    db.add(org)
+    await db.flush()
+
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Carlos",
+        phone_number="+525551234567",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
+
+
+@pytest_asyncio.fixture
+async def onboarding_session_collecting_services(db: AsyncSession) -> Organization:
+    """Alias for onboarding_org_collecting_services."""
+    org = Organization(
+        id=uuid4(),
+        name="Salón Bella",
+        phone_country_code="52",
+        phone_number="+525559876543",
+        status=OrganizationStatus.ONBOARDING.value,
+        onboarding_state=OnboardingState.COLLECTING_SERVICES,
+        onboarding_data={
+            "owner_name": "Maria",
+            "business_name": "Salón Bella",
+            "business_type": "salon",
+        },
+        onboarding_conversation_context={},
+        last_message_at=datetime.now(timezone.utc),
+    )
+    db.add(org)
+    await db.flush()
+
+    location = Location(
+        id=uuid4(),
+        organization_id=org.id,
+        name="Principal",
+        is_primary=True,
+    )
+    db.add(location)
+    await db.flush()
+
+    staff = Staff(
+        id=uuid4(),
+        organization_id=org.id,
+        location_id=location.id,
+        name="Maria",
+        phone_number="+525559876543",
+        role=StaffRole.OWNER.value,
+        permission_level=YumeUserPermissionLevel.OWNER.value,
+        is_active=True,
+    )
+    db.add(staff)
+    await db.flush()
+
+    return org
 
 
 async def verify_organization_created(

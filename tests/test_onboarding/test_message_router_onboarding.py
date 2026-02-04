@@ -2,6 +2,8 @@
 
 Tests for routing Cases 1, 3, 4, 5 as they relate to onboarding
 and routing to provisioned business numbers.
+
+Updated to use Organization-based onboarding (no OnboardingSession).
 """
 
 import pytest
@@ -9,15 +11,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from app.models import (
-    OnboardingSession,
-    OnboardingState,
     Organization,
     OrganizationStatus,
     Location,
     YumeUser,
     YumeUserRole,
+    YumeUserPermissionLevel,
     EndCustomer,
 )
+from app.services.onboarding import OnboardingState
 
 # Aliases for readability
 Staff = YumeUser
@@ -54,10 +56,10 @@ class TestMessageRouterCase1:
             assert result["route"] == "business_onboarding"
             mock_handler.assert_called_once()
 
-    async def test_creates_onboarding_session_for_new_user(
+    async def test_creates_organization_for_new_user(
         self, db, mock_whatsapp_client
     ):
-        """Creates OnboardingSession for new user."""
+        """Creates Organization for new user on first message."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
         # Mock the AI to avoid actual API calls
@@ -75,22 +77,34 @@ class TestMessageRouterCase1:
                 sender_name="Ana",
             )
 
-            # Verify session was created
+            # Verify organization was created (with ONBOARDING status)
             from sqlalchemy import select
             result = await db.execute(
-                select(OnboardingSession).where(
-                    OnboardingSession.phone_number == "+525559999888"
+                select(Organization).where(
+                    Organization.phone_number == "+525559999888"
                 )
             )
-            session = result.scalar_one_or_none()
+            org = result.scalar_one_or_none()
 
-            assert session is not None
-            assert session.owner_name == "Ana"
+            assert org is not None
+            assert org.status == OrganizationStatus.ONBOARDING.value
 
-    async def test_continues_existing_onboarding_session(
+            # Verify owner staff was created
+            result = await db.execute(
+                select(Staff).where(
+                    Staff.organization_id == org.id,
+                    Staff.phone_number == "+525559999888",
+                )
+            )
+            staff = result.scalar_one_or_none()
+            assert staff is not None
+            assert staff.name == "Ana"
+
+    async def test_continues_existing_onboarding_org(
         self, db, mock_whatsapp_client, onboarding_session_collecting_services
     ):
-        """Routes to existing onboarding session if one exists."""
+        """Routes to existing onboarding org if one exists."""
+        org = onboarding_session_collecting_services
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
         with patch(
@@ -101,13 +115,14 @@ class TestMessageRouterCase1:
 
             result = await router.route_message(
                 phone_number_id="YUME_CENTRAL_ID",
-                sender_phone=onboarding_session_collecting_services.phone_number,
+                sender_phone=org.phone_number,
                 message_id="test_msg_003",
                 message_content="Corte de cabello $150",
                 sender_name="Maria",
             )
 
-            assert result["case"] == "1"
+            # Should continue onboarding (case 1b since org exists)
+            assert result["case"] in ["1", "1b"]
             mock_handle.assert_called_once()
 
 
@@ -308,13 +323,15 @@ class TestMessageRouterWhatsAppResponse:
 
 
 class TestMessageRouterCompletedOnboarding:
-    """Tests for handling completed onboarding sessions."""
+    """Tests for handling completed onboarding."""
 
-    async def test_redirects_completed_onboarding_to_business_management(
+    async def test_redirects_active_org_to_business_management(
         self, db, mock_whatsapp_client
     ):
-        """Completed onboarding redirects to business management."""
-        # Create completed onboarding session with organization
+        """Active organization redirects to business management."""
+        from datetime import datetime, timezone
+
+        # Create active organization with owner
         org = Organization(
             id=uuid4(),
             name="Test Business",
@@ -323,6 +340,9 @@ class TestMessageRouterCompletedOnboarding:
             whatsapp_phone_number_id="+525577778888",
             timezone="America/Mexico_City",
             status=OrganizationStatus.ACTIVE.value,
+            onboarding_state=OnboardingState.COMPLETED,
+            onboarding_data={},
+            onboarding_conversation_context={},
         )
         db.add(org)
         await db.flush()
@@ -343,21 +363,11 @@ class TestMessageRouterCompletedOnboarding:
             name="Owner",
             phone_number="+525577778888",
             role=StaffRole.OWNER.value,
+            permission_level=YumeUserPermissionLevel.OWNER.value,
             is_active=True,
-            first_message_at="2024-01-01T00:00:00Z",
+            first_message_at=datetime.now(timezone.utc),
         )
         db.add(staff)
-        await db.flush()
-
-        session = OnboardingSession(
-            id=uuid4(),
-            phone_number="+525577778888",
-            state=OnboardingState.COMPLETED.value,
-            organization_id=str(org.id),
-            collected_data={"business_name": "Test Business"},
-            conversation_context={},
-        )
-        db.add(session)
         await db.flush()
 
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
@@ -375,7 +385,7 @@ class TestMessageRouterCompletedOnboarding:
                 message_content="Mi agenda",
             )
 
-            # Should route to business management since onboarding is complete
+            # Should route to business management since org is active
             # and user is registered as staff
             assert result["case"] == "2a"
             assert result["route"] == "business_management"

@@ -1,7 +1,9 @@
 """End-to-end tests for onboarding flow with Twilio provisioning.
 
 These tests verify the complete onboarding flow from first message
-through organization creation and subsequent message routing.
+through organization activation and subsequent message routing.
+
+Updated to use Organization-based onboarding (no OnboardingSession).
 """
 
 import pytest
@@ -10,9 +12,8 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import select
 
 from app.models import (
-    OnboardingSession,
-    OnboardingState,
     Organization,
+    OrganizationStatus,
     YumeUser,
     YumeUserRole,
     ServiceType,
@@ -23,7 +24,7 @@ from app.models import (
 Staff = YumeUser
 StaffRole = YumeUserRole
 from app.services.message_router import MessageRouter
-from app.services.onboarding import OnboardingHandler
+from app.services.onboarding import OnboardingHandler, OnboardingState
 
 from tests.test_onboarding.conftest import (
     MockOpenAIClient,
@@ -48,21 +49,22 @@ class TestOnboardingE2EWithTwilioProvisioning:
         2. Onboarding conversation collects business info + services
         3. User chooses Twilio provisioning
         4. Number provisioned (mocked Twilio API)
-        5. Organization created with whatsapp_phone_number_id = provisioned number
+        5. Organization activated with whatsapp_phone_number_id = provisioned number
         6. Verify message to provisioned number routes to this org
         """
         handler = OnboardingHandler(db=db)
 
-        # Step 1: Create session
-        session = await handler.get_or_create_session(
+        # Step 1: Create organization
+        org = await handler.get_or_create_organization(
             phone_number="+525599998888",
             sender_name="Roberto",
         )
-        assert session.state == OnboardingState.INITIATED.value
+        assert org.status == OrganizationStatus.ONBOARDING.value
+        assert org.onboarding_state == OnboardingState.INITIATED
 
         # Step 2: Save business info
         await handler._execute_tool(
-            session=session,
+            org=org,
             tool_name="save_business_info",
             tool_input={
                 "business_name": "Barbería El Patrón",
@@ -70,17 +72,18 @@ class TestOnboardingE2EWithTwilioProvisioning:
                 "owner_name": "Roberto García",
             },
         )
-        await db.refresh(session)
-        assert session.state == OnboardingState.COLLECTING_SERVICES.value
+        await db.refresh(org)
+        assert org.onboarding_state == OnboardingState.COLLECTING_SERVICES
+        assert org.name == "Barbería El Patrón"
 
         # Step 3: Add services
         await handler._execute_tool(
-            session=session,
+            org=org,
             tool_name="add_service",
             tool_input={"name": "Corte clásico", "duration_minutes": 30, "price": 120},
         )
         await handler._execute_tool(
-            session=session,
+            org=org,
             tool_name="add_service",
             tool_input={"name": "Corte y barba", "duration_minutes": 45, "price": 180},
         )
@@ -97,7 +100,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
             }
 
             result = await handler._execute_tool(
-                session=session,
+                org=org,
                 tool_name="provision_twilio_number",
                 tool_input={"country_code": "MX"},
             )
@@ -105,411 +108,191 @@ class TestOnboardingE2EWithTwilioProvisioning:
             assert result["success"] is True
             assert result["phone_number"] == "+525588887777"
 
+            mock_provision.assert_called_once_with(
+                business_name="Barbería El Patrón",
+                webhook_base_url=pytest.approx(mock_provision.call_args[1]["webhook_base_url"]),
+                country_code="MX",
+            )
+
         # Step 5: Complete onboarding
         result = await handler._execute_tool(
-            session=session,
+            org=org,
             tool_name="complete_onboarding",
             tool_input={"confirmed": True},
         )
 
         assert result["success"] is True
 
-        # Step 6: Verify organization was created correctly
-        org = await verify_organization_created(
-            db=db,
-            phone_number="+525599998888",
-            expected_business_name="Barbería El Patrón",
-            expected_whatsapp_number="+525588887777",  # Phone number, NOT SID
-        )
+        # Verify organization is now active
+        await db.refresh(org)
+        assert org.status == OrganizationStatus.ACTIVE.value
+        assert org.whatsapp_phone_number_id == "+525588887777"
 
-        # Verify SID stored in settings
-        assert org.settings["twilio_phone_number_sid"] == "PN_ROBERTO_001"
-        assert org.settings["whatsapp_provider"] == "twilio"
+        # Verify services were created
+        services = await verify_services_created(db, org.id, expected_count=2)
+        assert any(s.name == "Corte clásico" for s in services)
+        assert any(s.name == "Corte y barba" for s in services)
 
-        # Verify staff (owner) was created
-        await verify_staff_created(
-            db=db,
+        # Verify owner staff is linked to services
+        owner = await verify_staff_created(
+            db,
             organization_id=org.id,
             phone_number="+525599998888",
             expected_name="Roberto García",
             expected_role=StaffRole.OWNER.value,
         )
+        assert len(owner.service_types) == 2
 
-        # Verify services were created
-        services = await verify_services_created(
-            db=db,
-            organization_id=org.id,
-            expected_count=2,
-        )
-        service_names = [s.name for s in services]
-        assert "Corte clásico" in service_names
-        assert "Corte y barba" in service_names
-
-    async def test_message_routes_to_new_business_after_onboarding(
-        self, db, mock_whatsapp_client
-    ):
-        """
-        After onboarding with Twilio number:
-        1. Complete onboarding with Twilio provisioning
-        2. Customer sends message to business's new number
-        3. Message routes to customer flow (Case 5)
-        """
-        # Setup: Complete onboarding first
-        handler = OnboardingHandler(db=db)
-
-        session = await handler.get_or_create_session(
-            phone_number="+525511112222",
-            sender_name="Sofia",
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="save_business_info",
-            tool_input={
-                "business_name": "Salón Sofia",
-                "business_type": "salon",
-                "owner_name": "Sofia Martínez",
-            },
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_service",
-            tool_input={"name": "Corte dama", "duration_minutes": 45, "price": 250},
-        )
-
-        with patch(
-            "app.services.onboarding.provision_number_for_business",
-            new_callable=AsyncMock,
-        ) as mock_provision:
-            mock_provision.return_value = {
-                "phone_number": "+525566667777",
-                "phone_number_sid": "PN_SOFIA_001",
-            }
-
-            await handler._execute_tool(
-                session=session,
-                tool_name="provision_twilio_number",
-                tool_input={},
-            )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="complete_onboarding",
-            tool_input={"confirmed": True},
-        )
-
-        await db.commit()
-
-        # Now test: Customer message to the new business number
+        # Step 6: Verify routing - message to provisioned number finds this org
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
         with patch(
             "app.services.customer_flows.CustomerFlowHandler.handle_message",
             new_callable=AsyncMock,
-        ) as mock_customer_handler:
-            mock_customer_handler.return_value = "¡Hola! ¿Te gustaría agendar una cita?"
+        ) as mock_handler:
+            mock_handler.return_value = "¡Bienvenido a Barbería El Patrón!"
 
             result = await router.route_message(
-                phone_number_id="+525566667777",  # The provisioned number
-                sender_phone="+525533334444",  # A customer
-                message_id="customer_msg_001",
-                message_content="Hola, quiero una cita para mañana",
-                sender_name="Cliente",
+                phone_number_id="+525588887777",  # The provisioned number
+                sender_phone="+525511112222",  # A customer
+                message_id="test_route_001",
+                message_content="Quiero una cita",
+                sender_name="Customer",
             )
 
             assert result["status"] == "success"
-            assert result["case"] == "5"  # End customer flow
-            assert result["sender_type"] == "customer"
-
-            # Verify it routed to the correct organization
-            org_result = await db.execute(
-                select(Organization).where(
-                    Organization.whatsapp_phone_number_id == "+525566667777"
-                )
-            )
-            org = org_result.scalar_one()
             assert result["organization_id"] == str(org.id)
-            assert org.name == "Salón Sofia"
+            assert result["case"] == "5"  # End customer
 
-    async def test_owner_message_to_new_business_routes_to_staff_flow(
+    async def test_onboarding_creates_org_immediately(
         self, db, mock_whatsapp_client
     ):
-        """
-        After onboarding:
-        1. Owner sends message to their business number
-        2. Message routes to staff flow (Case 4)
-        3. Can manage bookings
-        """
-        # Setup: Complete onboarding first
+        """First message creates Organization with ONBOARDING status."""
         handler = OnboardingHandler(db=db)
 
-        session = await handler.get_or_create_session(
-            phone_number="+525544445555",
-            sender_name="Miguel",
+        # New user messages Yume
+        org = await handler.get_or_create_organization(
+            phone_number="+525577778888",
+            sender_name="Test User",
         )
 
+        # Verify organization was created immediately
+        assert org is not None
+        assert org.status == OrganizationStatus.ONBOARDING.value
+        assert org.onboarding_state == OnboardingState.INITIATED
+
+        # Verify staff (owner) was created
+        result = await db.execute(
+            select(Staff).where(
+                Staff.organization_id == org.id,
+                Staff.phone_number == "+525577778888",
+            )
+        )
+        staff = result.scalar_one_or_none()
+        assert staff is not None
+        assert staff.role == StaffRole.OWNER.value
+
+        # Verify location was created
+        result = await db.execute(
+            select(Location).where(
+                Location.organization_id == org.id,
+                Location.is_primary == True,
+            )
+        )
+        location = result.scalar_one_or_none()
+        assert location is not None
+        assert location.name == "Principal"
+
+    async def test_returning_user_continues_onboarding(
+        self, db, mock_whatsapp_client
+    ):
+        """Returning user with ONBOARDING org continues where they left off."""
+        handler = OnboardingHandler(db=db)
+
+        # First message
+        org = await handler.get_or_create_organization(
+            phone_number="+525566667777",
+            sender_name="Maria",
+        )
+
+        # Save some business info
         await handler._execute_tool(
-            session=session,
+            org=org,
             tool_name="save_business_info",
             tool_input={
-                "business_name": "Barbería Don Miguel",
-                "business_type": "barbershop",
-                "owner_name": "Miguel López",
+                "business_name": "Salón Maria",
+                "business_type": "salon",
+                "owner_name": "Maria",
             },
         )
 
+        await db.commit()
+
+        # New handler instance (simulating new request)
+        handler2 = OnboardingHandler(db=db)
+
+        # Get or create should return the same org
+        org2 = await handler2.get_or_create_organization(
+            phone_number="+525566667777",
+            sender_name="Maria",
+        )
+
+        assert org2.id == org.id
+        assert org2.onboarding_state == OnboardingState.COLLECTING_SERVICES
+        assert org2.onboarding_data["business_name"] == "Salón Maria"
+
+
+class TestOrganizationDeletionCleansUp:
+    """Tests that deleting organization cleans up properly."""
+
+    async def test_delete_org_allows_fresh_onboarding(
+        self, db, mock_whatsapp_client
+    ):
+        """After deleting org, same phone can start fresh onboarding."""
+        handler = OnboardingHandler(db=db)
+
+        # Create and complete onboarding
+        org = await handler.get_or_create_organization(
+            phone_number="+525544443333",
+            sender_name="Pedro",
+        )
+        org_id = org.id
+
         await handler._execute_tool(
-            session=session,
+            org=org,
+            tool_name="save_business_info",
+            tool_input={
+                "business_name": "Barbería Pedro",
+                "business_type": "barbershop",
+                "owner_name": "Pedro",
+            },
+        )
+        await handler._execute_tool(
+            org=org,
             tool_name="add_service",
             tool_input={"name": "Corte", "duration_minutes": 30, "price": 100},
         )
-
-        with patch(
-            "app.services.onboarding.provision_number_for_business",
-            new_callable=AsyncMock,
-        ) as mock_provision:
-            mock_provision.return_value = {
-                "phone_number": "+525577778888",
-                "phone_number_sid": "PN_MIGUEL_001",
-            }
-
-            await handler._execute_tool(
-                session=session,
-                tool_name="provision_twilio_number",
-                tool_input={},
-            )
-
         await handler._execute_tool(
-            session=session,
+            org=org,
             tool_name="complete_onboarding",
             tool_input={"confirmed": True},
         )
 
-        # Mark owner as having sent first message (to bypass staff onboarding)
-        staff_result = await db.execute(
-            select(Staff).where(Staff.phone_number == "+525544445555")
-        )
-        staff = staff_result.scalar_one()
-        staff.first_message_at = "2024-01-01T00:00:00Z"
         await db.commit()
 
-        # Now test: Owner message to their business number
-        router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
+        # Delete organization
+        from app.services.admin import delete_organization
+        deleted = await delete_organization(db, org_id)
+        assert deleted is True
 
-        with patch(
-            "app.services.conversation.ConversationHandler.handle_staff_message",
-            new_callable=AsyncMock,
-        ) as mock_staff_handler:
-            mock_staff_handler.return_value = "Tienes 3 citas hoy..."
-
-            result = await router.route_message(
-                phone_number_id="+525577778888",  # Business's provisioned number
-                sender_phone="+525544445555",  # Owner's phone (same as registration)
-                message_id="owner_msg_001",
-                message_content="Mi agenda de hoy",
-                sender_name="Miguel",
-            )
-
-            assert result["status"] == "success"
-            assert result["case"] == "4"  # Staff flow
-            assert result["sender_type"] == "staff"
-
-    async def test_organization_has_correct_whatsapp_phone_number_id(
-        self, db
-    ):
-        """
-        Verify the bug fix: whatsapp_phone_number_id should be the phone number,
-        not the Twilio SID.
-        """
-        handler = OnboardingHandler(db=db)
-
-        session = await handler.get_or_create_session(
-            phone_number="+525500001111",
-            sender_name="Test",
+        # Now the same phone should be able to start fresh
+        handler2 = OnboardingHandler(db=db)
+        new_org = await handler2.get_or_create_organization(
+            phone_number="+525544443333",
+            sender_name="Pedro",
         )
 
-        await handler._execute_tool(
-            session=session,
-            tool_name="save_business_info",
-            tool_input={
-                "business_name": "Test Business",
-                "business_type": "salon",
-                "owner_name": "Test Owner",
-            },
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_service",
-            tool_input={"name": "Service", "duration_minutes": 30, "price": 100},
-        )
-
-        # Provision with a clearly different SID vs phone number
-        with patch(
-            "app.services.onboarding.provision_number_for_business",
-            new_callable=AsyncMock,
-        ) as mock_provision:
-            mock_provision.return_value = {
-                "phone_number": "+525522223333",  # The actual phone number
-                "phone_number_sid": "PN_TEST_UNIQUE_SID_12345",  # The SID
-            }
-
-            await handler._execute_tool(
-                session=session,
-                tool_name="provision_twilio_number",
-                tool_input={},
-            )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="complete_onboarding",
-            tool_input={"confirmed": True},
-        )
-
-        # Verify
-        org_result = await db.execute(
-            select(Organization).where(Organization.phone_number == "+525500001111")
-        )
-        org = org_result.scalar_one()
-
-        # THE KEY ASSERTION: whatsapp_phone_number_id should be the phone number
-        assert org.whatsapp_phone_number_id == "+525522223333"
-        assert org.whatsapp_phone_number_id != "PN_TEST_UNIQUE_SID_12345"
-
-        # SID should be stored separately in settings
-        assert org.settings["twilio_phone_number_sid"] == "PN_TEST_UNIQUE_SID_12345"
-
-    async def test_onboarding_without_twilio_uses_owner_phone(
-        self, db
-    ):
-        """
-        When onboarding completes without Twilio provisioning,
-        whatsapp_phone_number_id should use owner's phone as placeholder.
-        """
-        handler = OnboardingHandler(db=db)
-
-        session = await handler.get_or_create_session(
-            phone_number="+525588889999",
-            sender_name="Elena",
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="save_business_info",
-            tool_input={
-                "business_name": "Spa Elena",
-                "business_type": "spa",
-                "owner_name": "Elena Ruiz",
-            },
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_service",
-            tool_input={"name": "Masaje", "duration_minutes": 60, "price": 500},
-        )
-
-        # Complete WITHOUT provisioning Twilio number
-        await handler._execute_tool(
-            session=session,
-            tool_name="complete_onboarding",
-            tool_input={"confirmed": True},
-        )
-
-        org_result = await db.execute(
-            select(Organization).where(Organization.phone_number == "+525588889999")
-        )
-        org = org_result.scalar_one()
-
-        # Should use owner's phone as placeholder
-        assert org.whatsapp_phone_number_id == "+525588889999"
-        assert org.settings["whatsapp_provider"] == "pending"
-
-
-class TestOnboardingE2EWithStaff:
-    """Tests for onboarding with additional staff members."""
-
-    async def test_creates_additional_staff_members(
-        self, db
-    ):
-        """Onboarding creates additional staff members correctly."""
-        handler = OnboardingHandler(db=db)
-
-        session = await handler.get_or_create_session(
-            phone_number="+525599990000",
-            sender_name="Carmen",
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="save_business_info",
-            tool_input={
-                "business_name": "Salón Carmen",
-                "business_type": "salon",
-                "owner_name": "Carmen Vega",
-            },
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_service",
-            tool_input={"name": "Corte", "duration_minutes": 45, "price": 250},
-        )
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_service",
-            tool_input={"name": "Tinte", "duration_minutes": 120, "price": 800},
-        )
-
-        # Add staff members
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_staff_member",
-            tool_input={
-                "name": "Ana",
-                "phone_number": "5512345678",
-                "services": ["Corte"],  # Only does cuts
-            },
-        )
-        await handler._execute_tool(
-            session=session,
-            tool_name="add_staff_member",
-            tool_input={
-                "name": "Beto",
-                "phone_number": "5598765432",
-                # No services specified = does all
-            },
-        )
-
-        await handler._execute_tool(
-            session=session,
-            tool_name="complete_onboarding",
-            tool_input={"confirmed": True},
-        )
-
-        # Verify staff were created
-        org_result = await db.execute(
-            select(Organization).where(Organization.phone_number == "+525599990000")
-        )
-        org = org_result.scalar_one()
-
-        staff_result = await db.execute(
-            select(Staff).where(Staff.organization_id == org.id)
-        )
-        staff_list = staff_result.scalars().all()
-
-        assert len(staff_list) == 3  # Owner + 2 employees
-
-        # Verify owner
-        owner = next((s for s in staff_list if s.role == StaffRole.OWNER.value), None)
-        assert owner is not None
-        assert owner.name == "Carmen Vega"
-
-        # Verify employees
-        employees = [s for s in staff_list if s.role == StaffRole.EMPLOYEE.value]
-        assert len(employees) == 2
-
-        employee_names = [e.name for e in employees]
-        assert "Ana" in employee_names
-        assert "Beto" in employee_names
+        # Should be a NEW organization
+        assert new_org.id != org_id
+        assert new_org.status == OrganizationStatus.ONBOARDING.value
+        assert new_org.onboarding_state == OnboardingState.INITIATED

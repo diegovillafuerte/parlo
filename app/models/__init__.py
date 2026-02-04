@@ -20,7 +20,6 @@ from app.models.organization import Organization, OrganizationStatus
 from app.models.service_type import ServiceType
 from app.models.spot import Spot
 from app.models.yume_user import YumeUser, YumeUserPermissionLevel, YumeUserRole
-from app.models.onboarding_session import OnboardingSession, OnboardingState
 from app.models.staff_onboarding_session import StaffOnboardingSession, StaffOnboardingState
 from app.models.customer_flow_session import CustomerFlowSession, CustomerFlowState, CustomerFlowType
 
@@ -68,8 +67,6 @@ __all__ = [
     "TokenType",
     "ExecutionTraceType",
     "FunctionTraceType",
-    "OnboardingSession",
-    "OnboardingState",
     "StaffOnboardingSession",
     "StaffOnboardingState",
     "CustomerFlowSession",

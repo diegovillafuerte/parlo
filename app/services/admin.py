@@ -13,7 +13,6 @@ from app.models import (
     FunctionTrace,
     Location,
     Message,
-    OnboardingSession,
     Organization,
     Staff,
 )
@@ -209,33 +208,10 @@ async def get_conversation_with_messages(
 async def delete_organization(db: AsyncSession, org_id: UUID) -> bool:
     """Permanently delete an organization and all associated data.
 
-    Note: OnboardingSession.organization_id is a STRING field, not a FK,
-    so it doesn't cascade automatically. We delete it manually first.
-    We also delete by phone number to catch incomplete sessions (where org_id is NULL).
-    All other entities have proper FK cascades and will be deleted automatically.
+    All related entities (Staff, Location, Appointments, etc.) are deleted
+    automatically via FK cascades defined in the models.
     """
-    # 1. Get staff phone numbers before deletion (for cleaning up incomplete sessions)
-    staff_result = await db.execute(
-        select(Staff.phone_number).where(Staff.organization_id == org_id)
-    )
-    staff_phones = [row[0] for row in staff_result.fetchall()]
-
-    # 2. Delete OnboardingSession records by organization_id (completed sessions)
-    await db.execute(
-        delete(OnboardingSession).where(OnboardingSession.organization_id == str(org_id))
-    )
-
-    # 3. Delete OnboardingSession records by phone number (catches incomplete sessions)
-    if staff_phones:
-        await db.execute(
-            delete(OnboardingSession).where(
-                OnboardingSession.phone_number.in_(staff_phones)
-            )
-        )
-
-    # 4. Delete Organization (cascades to all other entities via FK ondelete="CASCADE")
     result = await db.execute(delete(Organization).where(Organization.id == org_id))
-
     await db.commit()
     return result.rowcount > 0
 

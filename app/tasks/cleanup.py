@@ -115,7 +115,7 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
     for longer than the timeout period. It handles:
     - Customer flow sessions (booking, modify, cancel, rating)
     - Staff onboarding sessions
-    - Business onboarding sessions
+    - Business onboarding organizations (Organizations with status=ONBOARDING)
 
     Args:
         timeout_minutes: Inactivity threshold in minutes (default 30)
@@ -126,11 +126,15 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
     import asyncio
 
     async def _check_abandoned():
+        from datetime import timedelta
+
+        from sqlalchemy import select, update
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
         from app.config import get_settings
-        from app.models import CustomerFlowSession, OnboardingSession, StaffOnboardingSession
+        from app.models import CustomerFlowSession, Organization, OrganizationStatus, StaffOnboardingSession
         from app.services.abandoned_state import check_and_mark_abandoned_sessions
+        from app.services.onboarding import OnboardingState
 
         settings = get_settings()
         engine = create_async_engine(settings.async_database_url)
@@ -142,6 +146,8 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
             "business_onboarding": 0,
             "timeout_minutes": timeout_minutes,
         }
+
+        timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
 
         async with session_factory() as db:
             # Check customer flow sessions
@@ -158,12 +164,25 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
                 timeout_minutes=timeout_minutes,
             )
 
-            # Check business onboarding sessions
-            results["business_onboarding"] = await check_and_mark_abandoned_sessions(
-                db=db,
-                session_model=OnboardingSession,
-                timeout_minutes=timeout_minutes,
+            # Check business onboarding - Organizations with status=ONBOARDING
+            # Mark them as abandoned by setting onboarding_state to "abandoned"
+            result = await db.execute(
+                select(Organization).where(
+                    Organization.status == OrganizationStatus.ONBOARDING.value,
+                    Organization.onboarding_state != OnboardingState.ABANDONED,
+                    Organization.last_message_at < timeout_threshold,
+                )
             )
+            onboarding_orgs = result.scalars().all()
+
+            for org in onboarding_orgs:
+                # Save last active state before marking abandoned
+                onboarding_data = dict(org.onboarding_data or {})
+                onboarding_data["last_active_state"] = org.onboarding_state
+                onboarding_data["abandoned_at"] = datetime.now(timezone.utc).isoformat()
+                org.onboarding_data = onboarding_data
+                org.onboarding_state = OnboardingState.ABANDONED
+                results["business_onboarding"] += 1
 
             await db.commit()
 

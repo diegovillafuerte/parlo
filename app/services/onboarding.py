@@ -3,19 +3,27 @@
 This service manages the conversational onboarding flow where a business owner
 can set up their Yume account by chatting with the AI assistant.
 
+Architecture (as of Feb 2026):
+- Organization is created immediately on first message with status=ONBOARDING
+- Onboarding progress is tracked in Organization.onboarding_state
+- Collected data stored in Organization.onboarding_data
+- AI conversation history in Organization.onboarding_conversation_context
+- When complete, Organization.status changes to ACTIVE
+
 Flow:
 1. User texts Yume's main number
 2. System detects they're not associated with any organization
-3. Onboarding flow begins, collecting:
+3. Organization created with status=ONBOARDING, owner Staff created immediately
+4. Onboarding flow begins, collecting:
    - Business name and type
    - Owner name (if not from WhatsApp profile)
    - Services offered (name, duration, price)
    - Business hours
-4. Organization, Location, Staff (owner), and Services are created
-5. User is redirected to normal staff flow
+5. complete_onboarding changes Organization.status to ACTIVE and creates ServiceTypes/Spots
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -25,8 +33,6 @@ from app.services.tracing import traced
 from app.ai.client import OpenAIClient, get_openai_client
 from app.models import (
     Location,
-    OnboardingSession,
-    OnboardingState,
     Organization,
     OrganizationStatus,
     ServiceType,
@@ -37,6 +43,29 @@ from app.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Onboarding states (stored in Organization.onboarding_state)
+class OnboardingState:
+    """Onboarding progress states.
+
+    State machine flow:
+    1. INITIATED - Just started, no data collected yet
+    2. COLLECTING_BUSINESS_INFO - Getting name, type, owner info
+    3. COLLECTING_SERVICES - Getting services offered
+    4. COLLECTING_HOURS - Getting business hours (optional)
+    5. CONFIRMING - Showing summary, waiting for confirmation
+    6. COMPLETED - Organization activated, done
+    7. ABANDONED - User stopped responding (stores last_active_state in onboarding_data)
+    """
+
+    INITIATED = "initiated"
+    COLLECTING_BUSINESS_INFO = "collecting_business_info"
+    COLLECTING_SERVICES = "collecting_services"
+    COLLECTING_HOURS = "collecting_hours"
+    CONFIRMING = "confirming"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
 
 
 # Default business hours for Mexican businesses
@@ -216,16 +245,16 @@ def _format_service_menu(services: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_onboarding_system_prompt(session: OnboardingSession) -> str:
+def build_onboarding_system_prompt(org: Organization) -> str:
     """Build the system prompt for onboarding conversations.
 
     Args:
-        session: Current onboarding session
+        org: Organization being onboarded
 
     Returns:
         System prompt string
     """
-    collected = session.collected_data or {}
+    collected = org.onboarding_data or {}
     services = collected.get("services", [])
     staff_members = collected.get("staff", [])
     is_first_message = not collected.get("business_name") and not services
@@ -375,7 +404,11 @@ Cuando el usuario termine de agregar servicios:
 
 
 class OnboardingHandler:
-    """Handles business onboarding conversations."""
+    """Handles business onboarding conversations.
+
+    This creates Organizations immediately and tracks onboarding state
+    directly in the Organization model.
+    """
 
     def __init__(
         self,
@@ -391,109 +424,121 @@ class OnboardingHandler:
         self.db = db
         self.client = openai_client or get_openai_client()
 
-    async def get_or_create_session(
+    async def get_or_create_organization(
         self,
         phone_number: str,
         sender_name: str | None = None,
-    ) -> OnboardingSession:
-        """Get existing or create new onboarding session.
+    ) -> Organization:
+        """Get existing onboarding org or create new one with ONBOARDING status.
 
-        This returns:
-        - An active (in-progress) session if one exists
-        - A COMPLETED session if one exists (caller should redirect to staff flow)
-        - A new session if neither exists
+        This creates:
+        - Organization with status=ONBOARDING
+        - Placeholder Location ("Principal")
+        - Owner Staff with the sender's phone number
 
         Args:
             phone_number: User's phone number
             sender_name: Name from WhatsApp profile
 
         Returns:
-            Onboarding session (may be completed - caller should check state)
+            Organization (may be in ONBOARDING or ACTIVE status)
         """
-        # First, check for a COMPLETED session - if exists, return it so caller
-        # can redirect to the staff flow (this fixes the "restart onboarding" bug)
-        result = await self.db.execute(
-            select(OnboardingSession).where(
-                OnboardingSession.phone_number == phone_number,
-                OnboardingSession.state == OnboardingState.COMPLETED.value,
-            )
-        )
-        completed_session = result.scalar_one_or_none()
-        if completed_session:
-            logger.info(f"Found completed onboarding session for {phone_number}")
-            return completed_session
+        # Check for existing org by owner phone (via Staff)
+        from app.services import staff as staff_service
 
-        # Then check for an active (in-progress) session
-        result = await self.db.execute(
-            select(OnboardingSession).where(
-                OnboardingSession.phone_number == phone_number,
-                OnboardingSession.state != OnboardingState.COMPLETED.value,
-                OnboardingSession.state != OnboardingState.ABANDONED.value,
-            )
-        )
-        session = result.scalar_one_or_none()
+        registrations = await staff_service.get_all_staff_registrations(self.db, phone_number)
+        if registrations:
+            # Return the first org (should be unique for onboarding flow)
+            staff, org = registrations[0]
+            logger.info(f"Found existing organization for {phone_number}: {org.id}")
+            return org
 
-        if session:
-            # Update owner name if we got it from WhatsApp profile
-            if sender_name and not session.owner_name:
-                session.owner_name = sender_name
-                collected = session.collected_data or {}
-                if not collected.get("owner_name"):
-                    collected["owner_name"] = sender_name
-                    session.collected_data = collected
-            return session
-
-        # Create new session
-        session = OnboardingSession(
+        # Create new Organization with ONBOARDING status
+        country_code = self._extract_country_code(phone_number)
+        org = Organization(
+            name=None,  # Set later during onboarding
+            phone_country_code=country_code,
             phone_number=phone_number,
-            owner_name=sender_name,
-            state=OnboardingState.INITIATED.value,
-            collected_data={"owner_name": sender_name} if sender_name else {},
-            conversation_context={},
+            status=OrganizationStatus.ONBOARDING.value,
+            onboarding_state=OnboardingState.INITIATED,
+            onboarding_data={"owner_name": sender_name} if sender_name else {},
+            onboarding_conversation_context={},
+            last_message_at=datetime.now(timezone.utc),
         )
-        self.db.add(session)
+        self.db.add(org)
         await self.db.flush()
-        await self.db.refresh(session)
-        return session
+        await self.db.refresh(org)
+        logger.info(f"Created new organization {org.id} for onboarding")
+
+        # Create placeholder Location
+        location = Location(
+            organization_id=org.id,
+            name="Principal",
+            is_primary=True,
+        )
+        self.db.add(location)
+        await self.db.flush()
+        await self.db.refresh(location)
+        logger.info(f"Created placeholder location {location.id}")
+
+        # Create owner Staff immediately (allows routing to work)
+        owner_staff = Staff(
+            organization_id=org.id,
+            location_id=location.id,
+            name=sender_name or "Dueño",
+            phone_number=phone_number,
+            role=StaffRole.OWNER.value,
+            permission_level=YumeUserPermissionLevel.OWNER.value,
+            is_active=True,
+            permissions={"can_manage_all": True},
+        )
+        self.db.add(owner_staff)
+        await self.db.flush()
+        logger.info(f"Created owner staff {owner_staff.id}")
+
+        return org
 
     @traced
     async def handle_message(
         self,
-        session: OnboardingSession,
+        org: Organization,
         message_content: str,
     ) -> str:
         """Handle an incoming message during onboarding.
 
         Args:
-            session: Current onboarding session
+            org: Organization being onboarded
             message_content: User's message
 
         Returns:
             AI response text
         """
-        logger.info(f"Onboarding message from {session.phone_number}: {message_content[:50]}...")
+        logger.info(f"Onboarding message for org {org.id}: {message_content[:50]}...")
+
+        # Update last_message_at
+        org.last_message_at = datetime.now(timezone.utc)
 
         # Check if AI is configured
         if not self.client.is_configured:
-            return self._get_fallback_response(session)
+            return self._get_fallback_response(org)
 
         # Build system prompt
-        system_prompt = build_onboarding_system_prompt(session)
+        system_prompt = build_onboarding_system_prompt(org)
 
         # Get conversation history from context
-        history = session.conversation_context.get("messages", [])
+        history = org.onboarding_conversation_context.get("messages", [])
 
         # Add current message
         history.append({"role": "user", "content": message_content})
 
         # Process with AI and tools
-        response_text = await self._process_with_tools(session, system_prompt, history)
+        response_text = await self._process_with_tools(org, system_prompt, history)
 
         # Update conversation history (keep last 20 messages)
         history.append({"role": "assistant", "content": response_text})
-        context = session.conversation_context or {}
+        context = dict(org.onboarding_conversation_context or {})
         context["messages"] = history[-20:]
-        session.conversation_context = context
+        org.onboarding_conversation_context = context
 
         await self.db.flush()
 
@@ -502,14 +547,14 @@ class OnboardingHandler:
     @traced
     async def _process_with_tools(
         self,
-        session: OnboardingSession,
+        org: Organization,
         system_prompt: str,
         messages: list[dict[str, Any]],
     ) -> str:
         """Process message with AI, handling tool calls.
 
         Args:
-            session: Onboarding session
+            org: Organization being onboarded
             system_prompt: System prompt
             messages: Conversation history
 
@@ -537,7 +582,7 @@ class OnboardingHandler:
                 # Execute each tool
                 for tool_call in tool_calls:
                     result = await self._execute_tool(
-                        session,
+                        org,
                         tool_call["name"],
                         tool_call["input"],
                     )
@@ -554,14 +599,14 @@ class OnboardingHandler:
     @traced(trace_type="ai_tool")
     async def _execute_tool(
         self,
-        session: OnboardingSession,
+        org: Organization,
         tool_name: str,
         tool_input: dict[str, Any],
     ) -> dict[str, Any]:
         """Execute an onboarding tool.
 
         Args:
-            session: Onboarding session
+            org: Organization being onboarded
             tool_name: Tool to execute
             tool_input: Tool parameters
 
@@ -575,14 +620,14 @@ class OnboardingHandler:
             f"\n{'='*60}\n"
             f"🔧 ONBOARDING TOOL EXECUTION\n"
             f"{'='*60}\n"
-            f"   Phone: {session.phone_number}\n"
-            f"   State: {session.state}\n"
+            f"   Org ID: {org.id}\n"
+            f"   State: {org.onboarding_state}\n"
             f"   Tool: {tool_name}\n"
             f"   Input: {tool_input}\n"
             f"{'='*60}"
         )
 
-        collected = dict(session.collected_data or {})
+        collected = dict(org.onboarding_data or {})
 
         if tool_name == "save_business_info":
             collected["business_name"] = tool_input.get("business_name")
@@ -592,14 +637,30 @@ class OnboardingHandler:
                 collected["address"] = tool_input.get("address")
             if tool_input.get("city"):
                 collected["city"] = tool_input.get("city")
-            session.collected_data = collected
-            old_state = session.state
-            session.state = OnboardingState.COLLECTING_SERVICES.value
+            org.onboarding_data = collected
+            old_state = org.onboarding_state
+            org.onboarding_state = OnboardingState.COLLECTING_SERVICES
+
+            # Also update the org name and owner staff name
+            org.name = collected["business_name"]
+
+            # Update owner staff name if we got it
+            if collected.get("owner_name"):
+                result = await self.db.execute(
+                    select(Staff).where(
+                        Staff.organization_id == org.id,
+                        Staff.role == StaffRole.OWNER.value,
+                    )
+                )
+                owner = result.scalar_one_or_none()
+                if owner:
+                    owner.name = collected["owner_name"]
+
             await self.db.flush()
             elapsed_ms = (time.time() - start_time) * 1000
             logger.info(
                 f"   ✅ save_business_info: {collected['business_name']} "
-                f"(state: {old_state} → {session.state}) ({elapsed_ms:.0f}ms)"
+                f"(state: {old_state} → {org.onboarding_state}) ({elapsed_ms:.0f}ms)"
             )
             return {
                 "success": True,
@@ -617,7 +678,7 @@ class OnboardingHandler:
             }
             services.append(new_service)
             collected["services"] = services
-            session.collected_data = collected
+            org.onboarding_data = collected
             await self.db.flush()
 
             # Return the full updated menu so AI can display it
@@ -685,7 +746,7 @@ class OnboardingHandler:
             }
             staff_list.append(new_staff)
             collected["staff"] = staff_list
-            session.collected_data = collected
+            org.onboarding_data = collected
             await self.db.flush()
 
             return {
@@ -702,7 +763,7 @@ class OnboardingHandler:
                     hours[day] = tool_input[day]
             if hours:
                 collected["business_hours"] = hours
-                session.collected_data = collected
+                org.onboarding_data = collected
                 await self.db.flush()
             return {"success": True, "message": "Horario guardado"}
 
@@ -724,20 +785,16 @@ class OnboardingHandler:
                 logger.warning(f"   ⚠️ complete_onboarding: Missing services ({elapsed_ms:.0f}ms)")
                 return {"success": False, "error": "Falta al menos un servicio"}
 
-            # Create the organization and all related entities
+            # Activate the organization
             try:
-                logger.info(f"   📦 Creating organization: {collected.get('business_name')}")
-                org = await self._create_organization(session)
-                session.state = OnboardingState.COMPLETED.value
-                session.organization_id = str(org.id)
-                await self.db.flush()
+                logger.info(f"   📦 Activating organization: {collected.get('business_name')}")
+                await self._activate_organization(org)
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.info(
                     f"\n{'🎉'*20}\n"
                     f"   ONBOARDING COMPLETED!\n"
                     f"   Business: {org.name}\n"
                     f"   Org ID: {org.id}\n"
-                    f"   Phone: {session.phone_number}\n"
                     f"   Duration: {elapsed_ms:.0f}ms\n"
                     f"{'🎉'*20}"
                 )
@@ -749,7 +806,7 @@ class OnboardingHandler:
                 }
             except Exception as e:
                 elapsed_ms = (time.time() - start_time) * 1000
-                logger.error(f"   ❌ Error creating organization: {e} ({elapsed_ms:.0f}ms)", exc_info=True)
+                logger.error(f"   ❌ Error activating organization: {e} ({elapsed_ms:.0f}ms)", exc_info=True)
                 return {"success": False, "error": str(e)}
 
         elif tool_name == "send_dashboard_link":
@@ -798,10 +855,10 @@ class OnboardingHandler:
                         )
                     }
 
-                # Store the provisioned number in session
+                # Store the provisioned number in onboarding data
                 collected["twilio_provisioned_number"] = result["phone_number"]
                 collected["twilio_phone_number_sid"] = result["phone_number_sid"]
-                session.collected_data = collected
+                org.onboarding_data = collected
                 await self.db.flush()
 
                 logger.info(f"Provisioned Twilio number for {business_name}: {result['phone_number']}")
@@ -835,78 +892,37 @@ class OnboardingHandler:
         return result
 
     @traced
-    async def _create_organization(self, session: OnboardingSession) -> Organization:
-        """Create organization and all related entities from session data.
+    async def _activate_organization(self, org: Organization) -> None:
+        """Activate an organization after onboarding completes.
+
+        Creates ServiceTypes, Spots, and links everything together.
+        Changes status from ONBOARDING to ACTIVE.
 
         Args:
-            session: Completed onboarding session
-
-        Returns:
-            Created organization
+            org: Organization to activate
         """
-        collected = session.collected_data
-        logger.info(f"Creating organization from onboarding: {collected}")
+        collected = org.onboarding_data
+        logger.info(f"Activating organization {org.id} from onboarding: {collected}")
 
-        # Build address string
+        # Get the location (already created during get_or_create_organization)
+        result = await self.db.execute(
+            select(Location).where(
+                Location.organization_id == org.id,
+                Location.is_primary == True,
+            )
+        )
+        location = result.scalar_one()
+
+        # Update location with collected data
         address_parts = []
         if collected.get("address"):
             address_parts.append(collected["address"])
         if collected.get("city"):
             address_parts.append(collected["city"])
-        full_address = ", ".join(address_parts) if address_parts else ""
+        location.address = ", ".join(address_parts) if address_parts else ""
+        location.business_hours = collected.get("business_hours", DEFAULT_BUSINESS_HOURS)
 
-        # Determine WhatsApp configuration:
-        # Option 1: Twilio provisioned number (stored in collected_data)
-        # Option 2: No WhatsApp setup yet (use owner's phone as placeholder)
-        org_settings = {
-            "language": "es",
-            "currency": "MXN",
-            "business_type": collected.get("business_type", "salon"),
-        }
-
-        if collected.get("twilio_provisioned_number"):
-            # Twilio provisioned number path
-            # Use the actual phone number for routing (NOT the SID)
-            whatsapp_phone_number_id = collected["twilio_provisioned_number"]
-            org_settings["whatsapp_provider"] = "twilio"
-            org_settings["twilio_phone_number"] = collected["twilio_provisioned_number"]
-            org_settings["twilio_phone_number_sid"] = collected["twilio_phone_number_sid"]
-            logger.info(f"Using Twilio provisioned number: {collected['twilio_provisioned_number']}")
-        else:
-            # No WhatsApp setup yet - use owner phone as placeholder
-            whatsapp_phone_number_id = session.phone_number
-            org_settings["whatsapp_provider"] = "pending"  # Will be set when they provision a number
-            logger.info(f"No WhatsApp number provisioned, using owner phone as placeholder")
-
-        # 1. Create Organization
-        org = Organization(
-            name=collected["business_name"],
-            phone_country_code=self._extract_country_code(session.phone_number),
-            phone_number=session.phone_number,
-            whatsapp_phone_number_id=whatsapp_phone_number_id,
-            timezone="America/Mexico_City",
-            status=OrganizationStatus.ACTIVE.value,
-            settings=org_settings,
-        )
-        self.db.add(org)
-        await self.db.flush()
-        await self.db.refresh(org)
-        logger.info(f"Created organization: {org.id}")
-
-        # 2. Create Location
-        location = Location(
-            organization_id=org.id,
-            name="Principal",
-            address=full_address,
-            business_hours=collected.get("business_hours", DEFAULT_BUSINESS_HOURS),
-            is_primary=True,
-        )
-        self.db.add(location)
-        await self.db.flush()
-        await self.db.refresh(location)
-        logger.info(f"Created location: {location.id}")
-
-        # 3. Create Services
+        # Create Services
         services = []
         service_by_name = {}  # Map name to service for staff linking
         for svc_data in collected.get("services", []):
@@ -928,7 +944,7 @@ class OnboardingHandler:
             await self.db.refresh(svc)
         logger.info(f"Created {len(services)} services")
 
-        # 4. Create default Spot
+        # Create default Spot
         spot = Spot(
             location_id=location.id,
             name="Estación 1",
@@ -942,28 +958,22 @@ class OnboardingHandler:
         spot.service_types.extend(services)
         logger.info(f"Created spot: {spot.id}")
 
-        # 5. Create Staff (owner) with owner permission level
-        owner_name = collected.get("owner_name") or session.owner_name or "Dueño"
-        owner_staff = Staff(
-            organization_id=org.id,
-            location_id=location.id,
-            default_spot_id=spot.id,
-            name=owner_name,
-            phone_number=session.phone_number,
-            role=StaffRole.OWNER.value,
-            permission_level=YumeUserPermissionLevel.OWNER.value,
-            is_active=True,
-            permissions={"can_manage_all": True},
+        # Get owner staff and update with spot and services
+        result = await self.db.execute(
+            select(Staff).where(
+                Staff.organization_id == org.id,
+                Staff.role == StaffRole.OWNER.value,
+            )
         )
-        self.db.add(owner_staff)
-        await self.db.flush()
-        await self.db.refresh(owner_staff)
+        owner_staff = result.scalar_one()
+        owner_staff.default_spot_id = spot.id
+        owner_staff.location_id = location.id
 
         # Link owner to all services
         owner_staff.service_types.extend(services)
-        logger.info(f"Created staff (owner): {owner_staff.id}")
+        logger.info(f"Updated owner staff: {owner_staff.id}")
 
-        # 6. Create additional staff members collected during onboarding
+        # Create additional staff members collected during onboarding
         additional_staff = collected.get("staff", [])
         for staff_data in additional_staff:
             # Determine which services this staff member does
@@ -997,8 +1007,31 @@ class OnboardingHandler:
             employee.service_types.extend(staff_services)
             logger.info(f"Created staff (employee): {employee.id} - {employee.name}")
 
-        await self.db.commit()
-        return org
+        # Update organization settings and status
+        org_settings = dict(org.settings or {})
+        org_settings["language"] = "es"
+        org_settings["currency"] = "MXN"
+        org_settings["business_type"] = collected.get("business_type", "salon")
+
+        if collected.get("twilio_provisioned_number"):
+            # Twilio provisioned number path
+            org.whatsapp_phone_number_id = collected["twilio_provisioned_number"]
+            org_settings["whatsapp_provider"] = "twilio"
+            org_settings["twilio_phone_number"] = collected["twilio_provisioned_number"]
+            org_settings["twilio_phone_number_sid"] = collected.get("twilio_phone_number_sid")
+            logger.info(f"Using Twilio provisioned number: {collected['twilio_provisioned_number']}")
+        else:
+            # No WhatsApp setup yet - use owner phone as placeholder
+            org.whatsapp_phone_number_id = org.phone_number
+            org_settings["whatsapp_provider"] = "pending"
+            logger.info(f"No WhatsApp number provisioned, using owner phone as placeholder")
+
+        org.settings = org_settings
+        org.status = OrganizationStatus.ACTIVE.value
+        org.onboarding_state = OnboardingState.COMPLETED
+
+        await self.db.flush()
+        logger.info(f"Organization {org.id} activated successfully")
 
     def _extract_country_code(self, phone: str) -> str:
         """Extract country code from phone number.
@@ -1019,11 +1052,11 @@ class OnboardingHandler:
             return "1"
         return "52"  # Default to Mexico
 
-    def _get_fallback_response(self, session: OnboardingSession) -> str:
+    def _get_fallback_response(self, org: Organization) -> str:
         """Get fallback response when AI is not configured.
 
         Args:
-            session: Current session
+            org: Organization being onboarded
 
         Returns:
             Fallback message
@@ -1036,24 +1069,28 @@ class OnboardingHandler:
         )
 
 
-async def get_onboarding_session_by_phone(
+async def get_onboarding_organization_by_phone(
     db: AsyncSession,
     phone_number: str,
-) -> OnboardingSession | None:
-    """Get active onboarding session for a phone number.
+) -> Organization | None:
+    """Get organization in ONBOARDING status for a phone number.
+
+    Looks up by owner staff phone number.
 
     Args:
         db: Database session
         phone_number: Phone number to look up
 
     Returns:
-        Active onboarding session or None
+        Organization in onboarding status or None
     """
     result = await db.execute(
-        select(OnboardingSession).where(
-            OnboardingSession.phone_number == phone_number,
-            OnboardingSession.state != OnboardingState.COMPLETED.value,
-            OnboardingSession.state != OnboardingState.ABANDONED.value,
+        select(Organization)
+        .join(Staff, Staff.organization_id == Organization.id)
+        .where(
+            Staff.phone_number == phone_number,
+            Staff.role == StaffRole.OWNER.value,
+            Organization.status == OrganizationStatus.ONBOARDING.value,
         )
     )
     return result.scalar_one_or_none()

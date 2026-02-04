@@ -1,9 +1,10 @@
 """Organization model - represents a business using Yume."""
 
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, Text
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,7 +34,8 @@ class Organization(Base, UUIDMixin, TimestampMixin):
 
     __tablename__ = "organizations"
 
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Basic business info (name nullable during onboarding)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone_country_code: Mapped[str] = mapped_column(String(10), nullable=False)  # +52
     phone_number: Mapped[str] = mapped_column(String(50), nullable=False)
     whatsapp_phone_number_id: Mapped[str | None] = mapped_column(
@@ -51,6 +53,34 @@ class Organization(Base, UUIDMixin, TimestampMixin):
         default=OrganizationStatus.ONBOARDING.value,
     )
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    # Onboarding progress tracking (replaces OnboardingSession model)
+    onboarding_state: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="initiated",
+    )
+
+    # Collected data during onboarding (progressive)
+    # Structure: { "business_name": "...", "owner_name": "...", "services": [...], ... }
+    onboarding_data: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    # AI conversation history during onboarding
+    onboarding_conversation_context: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    # For abandoned session detection
+    last_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # Relationships
     locations: Mapped[list["Location"]] = relationship(
