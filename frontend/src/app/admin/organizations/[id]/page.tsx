@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { getOrganization, impersonateOrganization, updateOrganizationStatus, listConversations } from '@/lib/api/admin';
+import { getOrganization, impersonateOrganization, updateOrganizationStatus, listConversations, deleteOrganization } from '@/lib/api/admin';
 
 export default function AdminOrganizationDetailPage() {
   const { id } = useParams();
@@ -38,6 +38,19 @@ export default function AdminOrganizationDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-organization', id] });
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteOrganization,
+    onSuccess: () => {
+      router.push('/admin/organizations');
+    },
+  });
+
+  const handleDelete = () => {
+    if (org && confirm(`Are you sure you want to PERMANENTLY DELETE "${org.name}" and ALL associated data? This cannot be undone.`)) {
+      deleteMutation.mutate(org.id);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-MX', {
@@ -113,6 +126,13 @@ export default function AdminOrganizationDetailPage() {
                     } disabled:opacity-50`}
                   >
                     {org.status === 'suspended' ? 'Activate' : 'Suspend'}
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleteMutation.isPending}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  >
+                    Delete
                   </button>
                 </div>
               </div>

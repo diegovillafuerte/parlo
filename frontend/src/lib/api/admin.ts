@@ -81,3 +81,7 @@ export async function getActivityFeed(limit?: number): Promise<AdminActivityItem
   });
   return response.data;
 }
+
+export async function deleteOrganization(orgId: string): Promise<void> {
+  await api.delete(`/admin/organizations/${orgId}`);
+}

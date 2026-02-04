@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +12,7 @@ from app.models import (
     Customer,
     Location,
     Message,
+    OnboardingSession,
     Organization,
     Staff,
 )
@@ -202,6 +203,25 @@ async def get_conversation_with_messages(
         "conversation": conv,
         "messages": sorted(conv.messages, key=lambda m: m.created_at),
     }
+
+
+async def delete_organization(db: AsyncSession, org_id: UUID) -> bool:
+    """Permanently delete an organization and all associated data.
+
+    Note: OnboardingSession.organization_id is a STRING field, not a FK,
+    so it doesn't cascade automatically. We delete it manually first.
+    All other entities have proper FK cascades and will be deleted automatically.
+    """
+    # 1. Delete OnboardingSession records (STRING field, no FK cascade)
+    await db.execute(
+        delete(OnboardingSession).where(OnboardingSession.organization_id == str(org_id))
+    )
+
+    # 2. Delete Organization (cascades to all other entities via FK ondelete="CASCADE")
+    result = await db.execute(delete(Organization).where(Organization.id == org_id))
+
+    await db.commit()
+    return result.rowcount > 0
 
 
 async def get_activity_feed(db: AsyncSession, limit: int = 50) -> list[dict]:

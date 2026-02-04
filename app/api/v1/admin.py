@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_deps import require_admin
@@ -201,6 +201,32 @@ async def update_organization_status(
         whatsapp_connected=bool(org.whatsapp_phone_number_id),
         created_at=org.created_at,
     )
+
+
+@router.delete(
+    "/organizations/{org_id}",
+    status_code=204,
+    dependencies=[Depends(require_admin)],
+)
+async def delete_organization(
+    org_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Permanently delete an organization and all associated data.
+
+    This is a destructive operation that cannot be undone. It will delete:
+    - The organization
+    - All locations and spots
+    - All staff and their availability
+    - All customers, conversations, and messages
+    - All appointments
+    - All auth tokens and execution traces
+    - Related onboarding sessions
+    """
+    deleted = await admin_service.delete_organization(db, org_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return Response(status_code=204)
 
 
 # Conversations

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { listOrganizations, impersonateOrganization, updateOrganizationStatus } from '@/lib/api/admin';
+import { listOrganizations, impersonateOrganization, updateOrganizationStatus, deleteOrganization } from '@/lib/api/admin';
 import type { AdminOrganizationSummary } from '@/lib/types';
 
 export default function AdminOrganizationsPage() {
@@ -39,6 +39,13 @@ export default function AdminOrganizationsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteOrganization,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-organizations'] });
+    },
+  });
+
   const handleImpersonate = (org: AdminOrganizationSummary) => {
     if (confirm(`Login as "${org.name}"? This will open in a new tab.`)) {
       impersonateMutation.mutate(org.id);
@@ -50,6 +57,12 @@ export default function AdminOrganizationsPage() {
     const action = newStatus === 'suspended' ? 'suspend' : 'reactivate';
     if (confirm(`Are you sure you want to ${action} "${org.name}"?`)) {
       statusMutation.mutate({ orgId: org.id, status: newStatus });
+    }
+  };
+
+  const handleDelete = (org: AdminOrganizationSummary) => {
+    if (confirm(`Are you sure you want to PERMANENTLY DELETE "${org.name}" and ALL associated data? This cannot be undone.`)) {
+      deleteMutation.mutate(org.id);
     }
   };
 
@@ -185,6 +198,13 @@ export default function AdminOrganizationsPage() {
                         } disabled:opacity-50`}
                       >
                         {org.status === 'suspended' ? 'Activate' : 'Suspend'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(org)}
+                        disabled={deleteMutation.isPending}
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                      >
+                        Delete
                       </button>
                     </td>
                   </tr>
