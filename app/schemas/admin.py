@@ -26,7 +26,7 @@ class AdminOrganizationSummary(BaseModel):
     """Organization summary for admin list view."""
 
     id: UUID
-    name: str
+    name: str | None
     phone_number: str
     phone_country_code: str
     status: str

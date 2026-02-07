@@ -209,7 +209,7 @@ export interface AdminLoginResponse {
 
 export interface AdminOrganizationSummary {
   id: string;
-  name: string;
+  name: string | null;
   phone_number: string;
   phone_country_code: string;
   status: string;

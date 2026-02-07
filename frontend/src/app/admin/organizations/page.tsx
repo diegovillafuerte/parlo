@@ -47,7 +47,7 @@ export default function AdminOrganizationsPage() {
   });
 
   const handleImpersonate = (org: AdminOrganizationSummary) => {
-    if (confirm(`Login as "${org.name}"? This will open in a new tab.`)) {
+    if (confirm(`Login as "${org.name || '(Sin nombre)' }"? This will open in a new tab.`)) {
       impersonateMutation.mutate(org.id);
     }
   };
@@ -55,13 +55,13 @@ export default function AdminOrganizationsPage() {
   const handleToggleStatus = (org: AdminOrganizationSummary) => {
     const newStatus = org.status === 'suspended' ? 'active' : 'suspended';
     const action = newStatus === 'suspended' ? 'suspend' : 'reactivate';
-    if (confirm(`Are you sure you want to ${action} "${org.name}"?`)) {
+    if (confirm(`Are you sure you want to ${action} "${org.name || '(Sin nombre)'}"?`)) {
       statusMutation.mutate({ orgId: org.id, status: newStatus });
     }
   };
 
   const handleDelete = (org: AdminOrganizationSummary) => {
-    if (confirm(`Are you sure you want to PERMANENTLY DELETE "${org.name}" and ALL associated data? This cannot be undone.`)) {
+    if (confirm(`Are you sure you want to PERMANENTLY DELETE "${org.name || '(Sin nombre)'}" and ALL associated data? This cannot be undone.`)) {
       deleteMutation.mutate(org.id);
     }
   };
@@ -153,7 +153,7 @@ export default function AdminOrganizationsPage() {
                 {organizations.map((org) => (
                   <tr key={org.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{org.name}</div>
+                      <div className="text-sm font-medium text-gray-900">{org.name || '(Onboarding)'}</div>
                       <div className="text-xs text-gray-500">{org.id}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
