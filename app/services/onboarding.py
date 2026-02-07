@@ -34,6 +34,7 @@ from sqlalchemy.orm import selectinload
 from app.services.ai_handler_base import ToolCallingMixin
 from app.services.tracing import traced
 from app.ai.client import OpenAIClient, get_openai_client
+from app.utils.phone import normalize_phone_number
 from app.models import (
     Conversation,
     ConversationStatus,
@@ -470,7 +471,7 @@ class OnboardingHandler(ToolCallingMixin):
         org = Organization(
             name=None,  # Set later during onboarding
             phone_country_code=country_code,
-            phone_number=phone_number,
+            phone_number=normalize_phone_number(phone_number),
             status=OrganizationStatus.ONBOARDING.value,
             onboarding_state=OnboardingState.INITIATED,
             onboarding_data={"owner_name": sender_name} if sender_name else {},

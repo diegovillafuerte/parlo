@@ -157,7 +157,7 @@ export default function AdminOrganizationsPage() {
                       <div className="text-xs text-gray-500">{org.id}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {org.phone_country_code}{org.phone_number}
+                      {org.phone_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeClass(org.status)}`}>

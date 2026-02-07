@@ -179,7 +179,7 @@ export default function AdminOrganizationDetailPage() {
               <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <dt className="text-sm text-gray-500">Phone</dt>
-                  <dd className="text-sm font-medium text-gray-900">{org.phone_country_code}{org.phone_number}</dd>
+                  <dd className="text-sm font-medium text-gray-900">{org.phone_number}</dd>
                 </div>
                 <div>
                   <dt className="text-sm text-gray-500">Timezone</dt>

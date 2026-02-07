@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import AuthToken, Organization, YumeUser
 from app.utils.jwt import create_access_token
+from app.utils.phone import normalize_phone_number
 
 
 def generate_magic_link_token() -> tuple[str, str]:
@@ -31,6 +32,8 @@ async def get_organization_by_phone(
 
     Checks both the org's phone_number and owner staff phone numbers.
     """
+    phone_number = normalize_phone_number(phone_number)
+
     # First try to match organization phone
     result = await db.execute(
         select(Organization).where(Organization.phone_number == phone_number)
@@ -38,18 +41,6 @@ async def get_organization_by_phone(
     org = result.scalar_one_or_none()
     if org:
         return org
-
-    # Try matching with country code prefix
-    if not phone_number.startswith("+"):
-        # Try with +52 (Mexico)
-        result = await db.execute(
-            select(Organization).where(
-                Organization.phone_country_code + Organization.phone_number == "+" + phone_number
-            )
-        )
-        org = result.scalar_one_or_none()
-        if org:
-            return org
 
     # Search staff with owner role by phone number
     result = await db.execute(
