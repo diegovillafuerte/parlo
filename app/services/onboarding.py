@@ -28,6 +28,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.services.tracing import traced
 from app.ai.client import OpenAIClient, get_openai_client
@@ -950,17 +951,19 @@ class OnboardingHandler:
             name="Estación 1",
             is_active=True,
         )
+        # Assign service_types BEFORE flush to avoid lazy-load in async context
+        spot.service_types = list(services)
         self.db.add(spot)
         await self.db.flush()
         await self.db.refresh(spot)
-
-        # Link spot to all services
-        spot.service_types.extend(services)
         logger.info(f"Created spot: {spot.id}")
 
         # Get owner staff and update with spot and services
+        # Use selectinload to eagerly load service_types for async-safe access
         result = await self.db.execute(
-            select(Staff).where(
+            select(Staff)
+            .options(selectinload(Staff.service_types))
+            .where(
                 Staff.organization_id == org.id,
                 Staff.role == StaffRole.OWNER.value,
             )
@@ -999,12 +1002,11 @@ class OnboardingHandler:
                 is_active=True,
                 permissions={"can_view_schedule": True, "can_book": True},
             )
+            # Assign service_types BEFORE flush to avoid lazy-load in async context
+            employee.service_types = list(staff_services)
             self.db.add(employee)
             await self.db.flush()
             await self.db.refresh(employee)
-
-            # Link employee to their services
-            employee.service_types.extend(staff_services)
             logger.info(f"Created staff (employee): {employee.id} - {employee.name}")
 
         # Update organization settings and status
