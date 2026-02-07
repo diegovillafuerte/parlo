@@ -26,6 +26,26 @@ const TRACE_TYPE_COLORS: Record<string, string> = {
   external_api: 'bg-green-500',
 };
 
+const FUNCTION_DESCRIPTIONS: Record<string, string> = {
+  route_message: 'Route incoming WhatsApp message',
+  _route_central_number_message: 'Route to Yume central number',
+  _route_business_number_message: 'Route to business number',
+  _handle_business_onboarding: 'Start business onboarding flow',
+  _handle_staff_onboarding: 'Start staff onboarding flow',
+  _handle_business_management: 'Handle staff management request',
+  _handle_end_customer: 'Handle customer message',
+  handle_customer_message: 'Process customer conversation',
+  handle_staff_message: 'Process staff conversation',
+  _process_with_tools: 'AI tool-calling loop',
+  handle_message: 'Process onboarding conversation',
+  _execute_tool: 'Execute AI tool',
+  execute_tool: 'Execute AI tool',
+  _activate_organization: 'Activate business account',
+  create_appointment: 'Create appointment',
+  get_available_slots: 'Calculate available time slots',
+  send_text_message: 'Send WhatsApp message via Twilio',
+};
+
 export default function AdminLogsPage() {
   const [phoneFilter, setPhoneFilter] = useState('');
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -118,11 +138,21 @@ export default function AdminLogsPage() {
               }`}
             />
             <span
-              className={`text-sm font-mono flex-1 truncate ${
+              className={`text-sm flex-1 truncate ${
                 trace.is_error ? 'text-red-700' : 'text-gray-700'
               }`}
             >
-              {trace.function_name}
+              <span className="font-mono">{trace.function_name}</span>
+              {(() => {
+                const isToolExecutor = trace.function_name === '_execute_tool' || trace.function_name === 'execute_tool';
+                const toolName = isToolExecutor && trace.input_summary?.tool_name
+                  ? `Execute tool: ${trace.input_summary.tool_name}`
+                  : null;
+                const desc = toolName || FUNCTION_DESCRIPTIONS[trace.function_name];
+                return desc ? (
+                  <span className="ml-2 text-xs text-gray-400">{desc}</span>
+                ) : null;
+              })()}
             </span>
             <span
               className={`text-xs flex-shrink-0 ${
@@ -169,6 +199,11 @@ export default function AdminLogsPage() {
                 <span className="text-sm font-medium text-gray-800">
                   {corr.flow_label}
                 </span>
+                {corr.flow_status && (
+                  <span className="text-xs text-gray-400">
+                    &middot; {corr.flow_status}
+                  </span>
+                )}
                 <span
                   className={`text-xs flex-shrink-0 ${
                     corr.total_duration_ms > 2000
@@ -191,13 +226,13 @@ export default function AdminLogsPage() {
               {/* Message & response previews */}
               {corr.message_preview && (
                 <div className="mt-1 text-sm text-gray-600 truncate">
-                  <span className="text-gray-400">&gt; </span>
+                  <span className="mr-1">&#128100;</span>
                   &ldquo;{corr.message_preview}&rdquo;
                 </div>
               )}
               {corr.response_preview && (
                 <div className="text-sm text-gray-500 truncate">
-                  <span className="text-gray-400">&lt; </span>
+                  <span className="mr-1">&#129302;</span>
                   &ldquo;{corr.response_preview}&rdquo;
                 </div>
               )}

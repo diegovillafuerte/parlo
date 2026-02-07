@@ -73,6 +73,7 @@ class EnrichedCorrelation(BaseModel):
     response_preview: str | None = None  # AI response text
     ai_tools_used: list[str] = Field(default_factory=list)
     error_summary: str | None = None
+    flow_status: str | None = None
 
 
 class UserActivityGroup(BaseModel):

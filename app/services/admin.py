@@ -457,6 +457,49 @@ def _derive_flow_type(traces: list) -> tuple[str, str]:
     return "unknown", "Unknown"
 
 
+def _derive_flow_status(flow_type: str, ai_tools: list[str]) -> str | None:
+    """Derive a human-readable flow status from the last AI tool called."""
+    ONBOARDING_TOOLS = {
+        "save_business_info": "Gathering business info",
+        "add_service": "Adding services",
+        "get_current_menu": "Reviewing menu",
+        "add_staff_member": "Adding staff",
+        "save_business_hours": "Setting hours",
+        "provision_twilio_number": "Provisioning WhatsApp",
+        "complete_onboarding": "Completing setup",
+        "send_dashboard_link": "Sending dashboard link",
+    }
+    CUSTOMER_TOOLS = {
+        "check_availability": "Checking availability",
+        "book_appointment": "Booking appointment",
+        "cancel_appointment": "Cancelling appointment",
+        "reschedule_appointment": "Rescheduling",
+    }
+    STAFF_TOOLS = {
+        "get_schedule": "Viewing schedule",
+        "block_time": "Blocking time",
+        "mark_complete": "Marking complete",
+        "book_walk_in": "Booking walk-in",
+    }
+
+    tool_maps = {
+        "onboarding": ONBOARDING_TOOLS,
+        "customer": CUSTOMER_TOOLS,
+        "staff": STAFF_TOOLS,
+    }
+
+    tool_map = tool_maps.get(flow_type)
+    if tool_map is None:
+        return None
+
+    # Check last tool first, then earlier ones
+    for tool_name in reversed(ai_tools):
+        if tool_name in tool_map:
+            return tool_map[tool_name]
+
+    return "Chatting"
+
+
 def _extract_message_preview(traces: list) -> str | None:
     """Extract inbound message content from handle_*_message input_summary."""
     handler_names = {
@@ -519,6 +562,7 @@ def _enrich_correlation(
     response_preview = _extract_response_preview(traces)
     ai_tools = _extract_ai_tools(traces)
     error_summary = _extract_error_summary(traces)
+    flow_status = _derive_flow_status(flow_type, ai_tools)
     total_duration = sum(t.duration_ms for t in traces)
     has_errors = any(t.is_error for t in traces)
 
@@ -534,6 +578,7 @@ def _enrich_correlation(
         "response_preview": response_preview,
         "ai_tools_used": ai_tools,
         "error_summary": error_summary,
+        "flow_status": flow_status,
     }
 
 

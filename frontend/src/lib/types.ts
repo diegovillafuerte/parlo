@@ -338,6 +338,7 @@ export interface EnrichedCorrelation {
   response_preview: string | null;
   ai_tools_used: string[];
   error_summary: string | null;
+  flow_status: string | null;
 }
 
 export interface UserActivityGroup {
