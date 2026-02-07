@@ -27,6 +27,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.services.tracing import traced, set_organization_id
 from app.models import (
     Conversation,
@@ -59,6 +60,44 @@ MULTI_BUSINESS_REDIRECT_MESSAGE = """¡Hola! Veo que estás registrado en más d
 Para gestionar tu agenda, escribe directamente al número de WhatsApp del negocio que quieras administrar.
 
 Si necesitas ayuda, escríbenos a soporte@yume.mx"""
+
+
+def _build_onboarding_completion_message(org: Organization) -> str:
+    """Build a fixed template message for when onboarding completes.
+
+    Ensures every new business gets the same reliable completion message
+    with their provisioned number, dashboard URL, and login instructions.
+    """
+    settings = get_settings()
+    business_name = org.name or "Tu negocio"
+    dashboard_url = f"{settings.frontend_url}/login"
+
+    # Check if a number was provisioned
+    org_settings = org.settings or {}
+    provisioned_number = org_settings.get("twilio_phone_number")
+
+    if provisioned_number:
+        number_section = f"\U0001f4f1 N\u00famero de WhatsApp para tus clientes:\n{provisioned_number}"
+    else:
+        number_section = (
+            "\U0001f4f1 Tu n\u00famero de WhatsApp:\n"
+            "Te asignaremos uno pronto y te avisaremos por este chat."
+        )
+
+    return (
+        f"\U0001f389 \u00a1{business_name} ya est\u00e1 en Yume!\n"
+        f"\n"
+        f"Tu cuenta est\u00e1 activa y lista para recibir clientes.\n"
+        f"\n"
+        f"{number_section}\n"
+        f"\n"
+        f"\U0001f4bb Tu portal de administraci\u00f3n:\n"
+        f"{dashboard_url}\n"
+        f"(Inicia sesi\u00f3n con tu n\u00famero de WhatsApp, sin contrase\u00f1a)\n"
+        f"\n"
+        f"Tus clientes pueden escribir a tu n\u00famero de WhatsApp para "
+        f"agendar citas autom\u00e1ticamente. \u00a1\u00c9xito!"
+    )
 
 
 class MessageRouter:
@@ -229,6 +268,7 @@ class MessageRouter:
                 await self.db.refresh(org)
                 if org.status == OrganizationStatus.ACTIVE.value:
                     logger.info(f"   🎉 Onboarding completed! Organization activated.")
+                    response_text = _build_onboarding_completion_message(org)
 
                 await self.whatsapp.send_text_message(
                     phone_number_id=phone_number_id,
@@ -532,6 +572,7 @@ class MessageRouter:
         await self.db.refresh(org)
         if org.status == OrganizationStatus.ACTIVE.value:
             logger.info(f"   🎉 Onboarding completed! Organization activated.")
+            response = _build_onboarding_completion_message(org)
 
         return response
 

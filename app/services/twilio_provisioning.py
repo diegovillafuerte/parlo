@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
+from app.services.tracing import traced
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -54,6 +55,7 @@ class TwilioProvisioningService:
         """Check if Twilio is configured for WhatsApp Senders API."""
         return bool(self.is_configured and self.waba_id)
 
+    @traced(trace_type="external_api", capture_args=["country_code", "area_code", "limit"])
     async def list_available_numbers(
         self,
         country_code: str = "MX",
@@ -92,6 +94,7 @@ class TwilioProvisioningService:
             logger.error(f"Failed to list available numbers: {e}")
             return []
 
+    @traced(trace_type="external_api", capture_args=["phone_number", "friendly_name"])
     async def purchase_number(
         self,
         phone_number: str,
@@ -134,6 +137,7 @@ class TwilioProvisioningService:
                 logger.error(f"Response: {e.response.text}")
             return None
 
+    @traced(trace_type="external_api", capture_args=["phone_number", "business_name"])
     async def register_whatsapp_sender(
         self,
         phone_number: str,
@@ -189,6 +193,7 @@ class TwilioProvisioningService:
                 logger.error(f"Response: {e.response.text}")
             return None
 
+    @traced(trace_type="external_api", capture_args=["sender_sid"])
     async def get_sender_status(self, sender_sid: str) -> dict[str, Any] | None:
         """Get current status of a WhatsApp sender.
 
@@ -223,6 +228,7 @@ class TwilioProvisioningService:
             logger.error(f"Failed to get sender status: {e}")
             return None
 
+    @traced(trace_type="external_api", capture_args=["sender_sid"])
     async def submit_verification_code(
         self,
         sender_sid: str,
@@ -261,6 +267,7 @@ class TwilioProvisioningService:
             logger.error(f"Failed to submit verification code: {e}")
             return False
 
+    @traced(trace_type="external_api", capture_args=["phone_number_sid"])
     async def configure_webhook(
         self,
         phone_number_sid: str,
@@ -296,6 +303,7 @@ class TwilioProvisioningService:
             logger.error(f"Failed to configure webhook: {e}")
             return False
 
+    @traced(trace_type="external_api", capture_args=["phone_number_sid"])
     async def release_number(self, phone_number_sid: str) -> bool:
         """Release (delete) a phone number.
 
@@ -326,6 +334,7 @@ class TwilioProvisioningService:
         await self.client.aclose()
 
 
+@traced(capture_args=["business_name", "country_code"])
 async def provision_number_for_business(
     business_name: str,
     webhook_base_url: str,

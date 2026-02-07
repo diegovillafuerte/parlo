@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.models import Organization
 from app.services.message_router import MessageRouter
 from app.services.whatsapp import WhatsAppClient
-from app.services.tracing import start_trace_context, save_pending_traces, clear_trace_context
+from app.services.tracing import start_trace_context, set_organization_id, save_pending_traces, clear_trace_context
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 logger = logging.getLogger(__name__)
@@ -178,16 +178,6 @@ async def receive_sender_status_webhook(
     new_status = data.get("status") or data.get("Status")
     sender_id = data.get("senderId") or data.get("SenderId")  # Format: whatsapp:+525512345678
 
-    logger.info(
-        f"\n{'='*60}\n"
-        f"📡 TWILIO SENDER STATUS WEBHOOK\n"
-        f"{'='*60}\n"
-        f"  SenderId: {sender_id}\n"
-        f"  SenderSid: {sender_sid}\n"
-        f"  Status: {new_status}\n"
-        f"{'='*60}"
-    )
-
     # Extract phone number from senderId
     phone_number = None
     if sender_id:
@@ -197,37 +187,56 @@ async def receive_sender_status_webhook(
             else sender_id
         )
 
-    if phone_number:
-        # Find org by provisioned number (stored in settings.twilio_phone_number)
-        result = await db.execute(
-            select(Organization).where(
-                Organization.settings["twilio_phone_number"].astext == phone_number
-            )
+    # Start trace context for this webhook
+    start_trace_context(phone_number=phone_number or "unknown")
+
+    try:
+        logger.info(
+            f"\n{'='*60}\n"
+            f"📡 TWILIO SENDER STATUS WEBHOOK\n"
+            f"{'='*60}\n"
+            f"  SenderId: {sender_id}\n"
+            f"  SenderSid: {sender_sid}\n"
+            f"  Status: {new_status}\n"
+            f"{'='*60}"
         )
-        org = result.scalar_one_or_none()
 
-        if org:
-            logger.info(f"  Found org: {org.id} ({org.name})")
-
-            settings_dict = dict(org.settings or {})
-            settings_dict["sender_status"] = new_status
-            settings_dict["sender_sid"] = sender_sid
-
-            if new_status == "ONLINE":
-                # Number is ready for WhatsApp!
-                settings_dict["whatsapp_ready"] = True
-                settings_dict["number_status"] = "active"
-                org.whatsapp_phone_number_id = phone_number
-                logger.info(
-                    f"  🎉 WhatsApp sender ONLINE! Org {org.id} is ready to receive messages"
+        if phone_number:
+            # Find org by provisioned number (stored in settings.twilio_phone_number)
+            result = await db.execute(
+                select(Organization).where(
+                    Organization.settings["twilio_phone_number"].astext == phone_number
                 )
+            )
+            org = result.scalar_one_or_none()
 
-            org.settings = settings_dict
-            await db.commit()
-            logger.info(f"  Updated org settings with sender status: {new_status}")
+            if org:
+                set_organization_id(org.id)
+                logger.info(f"  Found org: {org.id} ({org.name})")
+
+                settings_dict = dict(org.settings or {})
+                settings_dict["sender_status"] = new_status
+                settings_dict["sender_sid"] = sender_sid
+
+                if new_status == "ONLINE":
+                    # Number is ready for WhatsApp!
+                    settings_dict["whatsapp_ready"] = True
+                    settings_dict["number_status"] = "active"
+                    org.whatsapp_phone_number_id = phone_number
+                    logger.info(
+                        f"  🎉 WhatsApp sender ONLINE! Org {org.id} is ready to receive messages"
+                    )
+
+                org.settings = settings_dict
+                await save_pending_traces(db)
+                await db.commit()
+                logger.info(f"  Updated org settings with sender status: {new_status}")
+            else:
+                logger.warning(f"  No org found with twilio_phone_number: {phone_number}")
         else:
-            logger.warning(f"  No org found with twilio_phone_number: {phone_number}")
-    else:
-        logger.warning("  No senderId in webhook payload")
+            logger.warning("  No senderId in webhook payload")
 
-    return {"status": "received"}
+        return {"status": "received"}
+
+    finally:
+        clear_trace_context()
