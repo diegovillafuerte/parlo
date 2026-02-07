@@ -23,7 +23,6 @@ from app.models import (
     Conversation,
     ConversationStatus,
     Customer,
-    ExecutionTraceType,
     Message,
     MessageContentType,
     MessageDirection,
@@ -32,9 +31,6 @@ from app.models import (
     ServiceType,
     Staff,
 )
-
-if TYPE_CHECKING:
-    from app.services.execution_tracer import ExecutionTracer
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +46,6 @@ class ConversationHandler:
         db: AsyncSession,
         organization: Organization,
         openai_client: OpenAIClient | None = None,
-        tracer: ExecutionTracer | None = None,
     ):
         """Initialize conversation handler.
 
@@ -58,13 +53,11 @@ class ConversationHandler:
             db: Database session
             organization: Current organization
             openai_client: OpenAI client (uses singleton if not provided)
-            tracer: Optional execution tracer for debugging
         """
         self.db = db
         self.org = organization
         self.client = openai_client or get_openai_client()
         self.tool_handler = ToolHandler(db, organization)
-        self.tracer = tracer
 
     @traced
     async def handle_customer_message(
@@ -203,59 +196,17 @@ class ConversationHandler:
         Returns:
             Final response text from GPT
         """
-        from app.services.execution_tracer import truncate_for_trace
-
         max_iterations = 5  # Prevent infinite loops
         response = None
-        llm_call_num = 0
 
         for iteration in range(max_iterations):
             logger.debug(f"Tool loop iteration {iteration + 1}")
-            llm_call_num += 1
 
-            # Call GPT with optional tracing
-            if self.tracer:
-                with self.tracer.trace_step(ExecutionTraceType.LLM_CALL) as step:
-                    step.set_input({
-                        "system_prompt_preview": truncate_for_trace(system_prompt, 300),
-                        "messages_count": len(messages),
-                        "messages_preview": truncate_for_trace(messages[-2:] if len(messages) >= 2 else messages, 500),
-                        "tools": [t["name"] for t in tools],
-                        "llm_call_number": llm_call_num,
-                    })
-
-                    response = self.client.create_message(
-                        system_prompt=system_prompt,
-                        messages=messages,
-                        tools=tools,
-                    )
-
-                    # Extract response info for trace
-                    has_tools = self.client.has_tool_calls(response)
-                    tool_calls = self.client.extract_tool_calls(response) if has_tools else []
-                    text_response = self.client.extract_text_response(response) if not has_tools else None
-
-                    step.set_output({
-                        "has_tool_calls": has_tools,
-                        "tool_calls": [{"name": tc["name"], "input": tc["input"]} for tc in tool_calls] if tool_calls else None,
-                        "response_preview": truncate_for_trace(text_response, 300) if text_response else None,
-                        "finish_reason": "tool_calls" if has_tools else "stop",
-                    })
-
-                    # Add token usage if available
-                    if hasattr(response, 'usage') and response.usage:
-                        step.set_metadata({
-                            "model": getattr(response, 'model', 'unknown'),
-                            "prompt_tokens": response.usage.prompt_tokens,
-                            "completion_tokens": response.usage.completion_tokens,
-                            "total_tokens": response.usage.total_tokens,
-                        })
-            else:
-                response = self.client.create_message(
-                    system_prompt=system_prompt,
-                    messages=messages,
-                    tools=tools,
-                )
+            response = self.client.create_message(
+                system_prompt=system_prompt,
+                messages=messages,
+                tools=tools,
+            )
 
             # Check if GPT wants to use tools
             if self.client.has_tool_calls(response):
@@ -269,34 +220,12 @@ class ConversationHandler:
 
                 # Execute each tool and add results as separate messages
                 for tool_call in tool_calls:
-                    # Execute tool with optional tracing
-                    if self.tracer:
-                        with self.tracer.trace_step(ExecutionTraceType.TOOL_EXECUTION) as step:
-                            step.set_input({
-                                "tool_name": tool_call["name"],
-                                "tool_input": tool_call["input"],
-                            })
-
-                            result = await self.tool_handler.execute_tool(
-                                tool_name=tool_call["name"],
-                                tool_input=tool_call["input"],
-                                customer=customer,
-                                staff=staff,
-                            )
-
-                            step.set_output({
-                                "result": truncate_for_trace(result, 500),
-                            })
-
-                            if "error" in result:
-                                step.set_error(result["error"])
-                    else:
-                        result = await self.tool_handler.execute_tool(
-                            tool_name=tool_call["name"],
-                            tool_input=tool_call["input"],
-                            customer=customer,
-                            staff=staff,
-                        )
+                    result = await self.tool_handler.execute_tool(
+                        tool_name=tool_call["name"],
+                        tool_input=tool_call["input"],
+                        customer=customer,
+                        staff=staff,
+                    )
 
                     # Add tool result message in OpenAI format
                     messages.append(
@@ -307,15 +236,6 @@ class ConversationHandler:
                 # GPT gave a final response
                 response_text = self.client.extract_text_response(response)
                 logger.info(f"GPT final response: {response_text[:100]}...")
-
-                # Trace response assembly
-                if self.tracer:
-                    with self.tracer.trace_step(ExecutionTraceType.RESPONSE_ASSEMBLED) as step:
-                        step.set_input({"llm_iterations": llm_call_num})
-                        step.set_output({
-                            "response_preview": truncate_for_trace(response_text, 300),
-                            "response_length": len(response_text),
-                        })
 
                 return response_text
 

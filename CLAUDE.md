@@ -72,6 +72,8 @@ ngrok http 8000                   # For Twilio webhooks
 
 **See `docs/PROJECT_SPEC.md` for complete routing logic, state machines, and permissions.**
 
+**Note:** This is a Python-primary codebase with TypeScript frontend. Always check for import mismatches between services when debugging deployment errors.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -121,7 +123,7 @@ yume/
 | Availability | Staff schedules |
 | AuthToken | Magic link tokens |
 | OnboardingSession | Tracks WhatsApp onboarding state for new businesses |
-| ExecutionTrace | AI pipeline execution traces for debugging |
+| FunctionTrace | Function execution traces for debugging |
 
 **Key relationships:**
 - Staff ↔ ServiceType: many-to-many (what staff can do)
@@ -211,8 +213,7 @@ NEXT_PUBLIC_YUME_WHATSAPP_NUMBER=17759674528
 ### Fully Implemented
 - All 15 database models with proper relationships
 - ~63 API endpoints for all resources
-- Admin dashboard (stats, org management, impersonation, conversations, activity, playground)
-- Admin conversation playground (emulate users, view AI pipeline execution traces)
+- Admin dashboard (stats, org management, impersonation, conversations, activity, logs)
 - AI conversation handler with tool calling (customer + staff flows)
 - Message routing (staff vs customer identification)
 - Availability slot calculation with conflict validation
@@ -246,11 +247,9 @@ NEXT_PUBLIC_YUME_WHATSAPP_NUMBER=17759674528
 | `app/ai/prompts.py` | System prompts (Spanish) |
 | `app/tasks/celery_app.py` | Celery configuration + beat schedule |
 | `app/tasks/reminders.py` | 24-hour appointment reminder tasks |
-| `app/services/execution_tracer.py` | Captures AI pipeline execution traces |
-| `app/services/playground.py` | Admin playground business logic |
+| `app/services/tracing.py` | Function-level tracing decorator |
 | `frontend/src/providers/AuthProvider.tsx` | Auth context |
 | `frontend/src/lib/api/client.ts` | Axios with dual token handling |
-| `frontend/src/app/admin/playground/page.tsx` | Admin conversation playground UI |
 
 ## Development Guidelines
 
@@ -274,13 +273,65 @@ Every query must filter by `organization_id` to prevent data leakage.
 - Mock external APIs (Twilio, OpenAI)
 - Test availability edge cases thoroughly
 
+## Visual Verification (Admin Dashboard)
+
+When implementing or modifying admin dashboard features, follow this workflow:
+
+### Mandatory Steps
+1. **Start the dev environment** before making UI changes:
+   - Backend: `uvicorn app.main:app --reload` (port 8000)
+   - Frontend: `cd frontend && npm run dev` (port 3000)
+
+2. **After completing any UI change**, use Playwright MCP to verify:
+   ```
+   - Navigate to http://localhost:3000/admin (or relevant page)
+   - Take a screenshot
+   - Analyze: Does it match the intended design? Are there errors?
+   ```
+
+3. **If something is broken**:
+   - Check browser console for errors
+   - Fix the issue
+   - Re-verify with another screenshot
+   - Repeat until it works
+
+4. **Only report "done" when**:
+   - The UI renders correctly (screenshot confirms)
+   - No console errors
+   - Interactive elements work (click through flows if needed)
+
+### Example Verification Commands
+```
+Use Playwright to:
+1. Navigate to http://localhost:3000/admin
+2. Take a screenshot
+3. Click the "Organizations" tab and screenshot
+4. Verify the table loads with data
+```
+
+### What NOT to do
+- Never say "done" without visual verification
+- Never assume code changes work just because there are no type errors
+- Never skip testing interactive flows (buttons, forms, navigation)
+
 ## Debugging
 
+### Investigation Approach
+When investigating bugs, always check the full call chain from entry point to database layer before reporting findings. Don't stop at the first suspicious code - trace the complete flow.
+
+### Summarizing Findings
+For debugging sessions, summarize findings with:
+1. **Root cause identified** - What is actually causing the issue
+2. **Files affected** - All files involved in the bug
+3. **Proposed fix** - Specific changes to make
+4. **How to verify** - Steps to confirm the fix works
+
+### Quick Tips
 - Webhook logs show incoming message format
 - WhatsApp webhook must respond within 20 seconds
 - Check tool call format if AI seems stuck
 - Admin dashboard has conversation viewer for debugging
-- **Admin Playground** (`/admin/playground`): Emulate any user, see full AI execution traces with latencies
+- **Admin Logs** (`/admin/logs`): View function execution traces with latencies
 
 ## Session Workflow
 

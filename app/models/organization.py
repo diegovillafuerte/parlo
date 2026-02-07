@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.conversation import Conversation
     from app.models.end_customer import EndCustomer
-    from app.models.execution_trace import ExecutionTrace
     from app.models.location import Location
     from app.models.service_type import ServiceType
     from app.models.yume_user import YumeUser
@@ -100,9 +99,6 @@ class Organization(Base, UUIDMixin, TimestampMixin):
     )
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="organization", cascade="all, delete-orphan"
-    )
-    execution_traces: Mapped[list["ExecutionTrace"]] = relationship(
-        "ExecutionTrace", back_populates="organization", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

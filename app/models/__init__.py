@@ -7,7 +7,6 @@ from app.models.availability import Availability, AvailabilityType
 from app.models.base import Base, TimestampMixin, UUIDMixin
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.end_customer import EndCustomer
-from app.models.execution_trace import ExecutionTrace, ExecutionTraceType
 from app.models.function_trace import FunctionTrace, FunctionTraceType
 from app.models.location import Location
 from app.models.message import (
@@ -47,7 +46,6 @@ __all__ = [
     "Message",
     "Availability",
     "AuthToken",
-    "ExecutionTrace",
     "FunctionTrace",
     # Association Tables
     "spot_service_types",
@@ -65,7 +63,6 @@ __all__ = [
     "MessageContentType",
     "AvailabilityType",
     "TokenType",
-    "ExecutionTraceType",
     "FunctionTraceType",
     "StaffOnboardingSession",
     "StaffOnboardingState",

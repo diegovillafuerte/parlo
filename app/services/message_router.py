@@ -32,7 +32,6 @@ from app.models import (
     Conversation,
     ConversationStatus,
     EndCustomer,
-    ExecutionTraceType,
     Message,
     MessageContentType,
     MessageDirection,
@@ -48,9 +47,6 @@ from app.services.customer_flows import CustomerFlowHandler
 from app.services.onboarding import OnboardingHandler, OnboardingState
 from app.services.staff_onboarding import StaffOnboardingHandler
 from app.services.whatsapp import WhatsAppClient
-
-if TYPE_CHECKING:
-    from app.services.execution_tracer import ExecutionTracer
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +94,6 @@ class MessageRouter:
         message_id: str,
         message_content: str,
         sender_name: str | None = None,
-        tracer: ExecutionTracer | None = None,
-        skip_whatsapp_send: bool = False,
     ) -> dict[str, str]:
         """Route an incoming WhatsApp message using the 5-case decision tree.
 
@@ -111,8 +105,6 @@ class MessageRouter:
             message_id: WhatsApp message ID (for deduplication)
             message_content: The message text
             sender_name: Sender's name from WhatsApp profile (optional)
-            tracer: Optional execution tracer for debugging
-            skip_whatsapp_send: If True, don't send WhatsApp response (for playground)
 
         Returns:
             Dict with routing decision and status
@@ -127,18 +119,6 @@ class MessageRouter:
             f"  Content: {message_content[:100]}{'...' if len(message_content) > 100 else ''}\n"
             f"{'='*80}"
         )
-
-        # Trace message received
-        if tracer:
-            with tracer.trace_step(ExecutionTraceType.MESSAGE_RECEIVED) as step:
-                step.set_input({
-                    "phone_number_id": phone_number_id,
-                    "sender_phone": sender_phone,
-                    "message_id": message_id,
-                    "message_preview": message_content[:200] if message_content else "",
-                    "sender_name": sender_name,
-                })
-                step.set_output({"status": "received"})
 
         # Step 1: Check message deduplication
         if await self._message_already_processed(message_id):
@@ -157,8 +137,6 @@ class MessageRouter:
                 sender_name=sender_name,
                 message_id=message_id,
                 message_content=message_content,
-                tracer=tracer,
-                skip_whatsapp_send=skip_whatsapp_send,
             )
         else:
             # YUME CENTRAL NUMBER FLOW (Cases 1, 2a, 2b)
@@ -168,8 +146,6 @@ class MessageRouter:
                 sender_name=sender_name,
                 message_id=message_id,
                 message_content=message_content,
-                tracer=tracer,
-                skip_whatsapp_send=skip_whatsapp_send,
             )
 
     @traced(capture_args=["sender_phone"])
@@ -180,8 +156,6 @@ class MessageRouter:
         sender_name: str | None,
         message_id: str,
         message_content: str,
-        tracer: ExecutionTracer | None = None,
-        skip_whatsapp_send: bool = False,
     ) -> dict[str, str]:
         """Route message received on Yume's central WhatsApp number.
 
@@ -196,8 +170,6 @@ class MessageRouter:
             sender_name: Sender's WhatsApp profile name
             message_id: WhatsApp message ID
             message_content: Message text
-            tracer: Optional execution tracer
-            skip_whatsapp_send: If True, don't send WhatsApp response
 
         Returns:
             Dict with routing decision and status
@@ -215,29 +187,18 @@ class MessageRouter:
                 f"   → Routing to OnboardingHandler"
             )
 
-            if tracer:
-                with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                    step.set_input({"sender_phone": sender_phone})
-                    step.set_output({
-                        "case": "1",
-                        "route": "business_onboarding",
-                        "reason": "Unknown sender - starting onboarding",
-                    })
-
             response_text = await self._handle_business_onboarding(
                 sender_phone=sender_phone,
                 message_content=message_content,
                 sender_name=sender_name,
                 message_id=message_id,
-                tracer=tracer,
             )
 
-            if not skip_whatsapp_send:
-                await self.whatsapp.send_text_message(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=response_text,
-                )
+            await self.whatsapp.send_text_message(
+                phone_number_id=phone_number_id,
+                to=sender_phone,
+                message=response_text,
+            )
 
             await self.db.commit()
             return {
@@ -261,17 +222,6 @@ class MessageRouter:
                     f"   → Continuing onboarding flow"
                 )
 
-                if tracer:
-                    with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                        step.set_input({"sender_phone": sender_phone})
-                        step.set_output({
-                            "case": "1b",
-                            "route": "business_onboarding",
-                            "organization_id": str(org.id),
-                            "onboarding_state": org.onboarding_state,
-                            "reason": "Continuing existing onboarding",
-                        })
-
                 onboarding_handler = OnboardingHandler(db=self.db)
                 response_text = await onboarding_handler.handle_message(org, message_content)
 
@@ -280,12 +230,11 @@ class MessageRouter:
                 if org.status == OrganizationStatus.ACTIVE.value:
                     logger.info(f"   🎉 Onboarding completed! Organization activated.")
 
-                if not skip_whatsapp_send:
-                    await self.whatsapp.send_text_message(
-                        phone_number_id=phone_number_id,
-                        to=sender_phone,
-                        message=response_text,
-                    )
+                await self.whatsapp.send_text_message(
+                    phone_number_id=phone_number_id,
+                    to=sender_phone,
+                    message=response_text,
+                )
 
                 await self.db.commit()
                 return {
@@ -304,18 +253,6 @@ class MessageRouter:
                 f"   → Routing to Business Management Handler"
             )
 
-            if tracer:
-                with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                    step.set_input({"sender_phone": sender_phone})
-                    step.set_output({
-                        "case": "2a",
-                        "route": "business_management",
-                        "organization_id": str(org.id),
-                        "organization_name": org.name,
-                        "staff_id": str(staff.id),
-                        "staff_name": staff.name,
-                    })
-
             # Mark first message if needed
             await staff_service.mark_first_message(self.db, staff)
 
@@ -325,15 +262,13 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
-                tracer=tracer,
             )
 
-            if not skip_whatsapp_send:
-                await self.whatsapp.send_text_message(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=response_text,
-                )
+            await self.whatsapp.send_text_message(
+                phone_number_id=phone_number_id,
+                to=sender_phone,
+                message=response_text,
+            )
 
             await self.db.commit()
             return {
@@ -354,26 +289,15 @@ class MessageRouter:
                 f"   → Sending redirect message"
             )
 
-            if tracer:
-                with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                    step.set_input({"sender_phone": sender_phone})
-                    step.set_output({
-                        "case": "2b",
-                        "route": "redirect",
-                        "businesses": [org.name for _, org in registrations],
-                        "reason": "Staff of multiple businesses - must message directly",
-                    })
-
             response_text = MULTI_BUSINESS_REDIRECT_MESSAGE.format(
                 business_list="\n".join(business_names)
             )
 
-            if not skip_whatsapp_send:
-                await self.whatsapp.send_text_message(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=response_text,
-                )
+            await self.whatsapp.send_text_message(
+                phone_number_id=phone_number_id,
+                to=sender_phone,
+                message=response_text,
+            )
 
             await self.db.commit()
             return {
@@ -394,8 +318,6 @@ class MessageRouter:
         sender_name: str | None,
         message_id: str,
         message_content: str,
-        tracer: ExecutionTracer | None = None,
-        skip_whatsapp_send: bool = False,
     ) -> dict[str, str]:
         """Route message received on a business's own WhatsApp number.
 
@@ -411,8 +333,6 @@ class MessageRouter:
             sender_name: Sender's WhatsApp profile name
             message_id: WhatsApp message ID
             message_content: Message text
-            tracer: Optional execution tracer
-            skip_whatsapp_send: If True, don't send WhatsApp response
 
         Returns:
             Dict with routing decision and status
@@ -431,18 +351,6 @@ class MessageRouter:
                     f"   → Routing to Staff Onboarding Handler"
                 )
 
-                if tracer:
-                    with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                        step.set_input({"sender_phone": sender_phone})
-                        step.set_output({
-                            "case": "3",
-                            "route": "staff_onboarding",
-                            "organization_id": str(org.id),
-                            "organization_name": org.name,
-                            "staff_id": str(staff.id),
-                            "staff_name": staff.name,
-                        })
-
                 # Mark first message
                 await staff_service.mark_first_message(self.db, staff)
 
@@ -452,7 +360,6 @@ class MessageRouter:
                     message_content=message_content,
                     sender_phone=sender_phone,
                     message_id=message_id,
-                    tracer=tracer,
                 )
 
                 sender_type = MessageSenderType.STAFF
@@ -481,18 +388,6 @@ class MessageRouter:
                         f"   → Continuing Staff Onboarding"
                     )
 
-                    if tracer:
-                        with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                            step.set_input({"sender_phone": sender_phone})
-                            step.set_output({
-                                "case": "4_onboarding",
-                                "route": "staff_onboarding",
-                                "via": "business_whatsapp",
-                                "organization_id": str(org.id),
-                                "staff_id": str(staff.id),
-                                "onboarding_state": pending_session.state,
-                            })
-
                     response_text = await staff_onboarding_handler.handle_message(
                         session=pending_session,
                         staff=staff,
@@ -508,7 +403,6 @@ class MessageRouter:
                             message_content=message_content,
                             sender_phone=sender_phone,
                             message_id=message_id,
-                            tracer=tracer,
                         )
                 else:
                     # Normal business management
@@ -518,26 +412,12 @@ class MessageRouter:
                         f"   → Routing to Business Management Handler"
                     )
 
-                    if tracer:
-                        with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                            step.set_input({"sender_phone": sender_phone})
-                            step.set_output({
-                                "case": "4",
-                                "route": "business_management",
-                                "via": "business_whatsapp",
-                                "organization_id": str(org.id),
-                                "organization_name": org.name,
-                                "staff_id": str(staff.id),
-                                "staff_name": staff.name,
-                            })
-
                     response_text = await self._handle_business_management(
                         org=org,
                         staff=staff,
                         message_content=message_content,
                         sender_phone=sender_phone,
                         message_id=message_id,
-                        tracer=tracer,
                     )
 
                 sender_type = MessageSenderType.STAFF
@@ -555,36 +435,22 @@ class MessageRouter:
                 f"   → Routing to End Customer Handler"
             )
 
-            if tracer:
-                with tracer.trace_step(ExecutionTraceType.ROUTING_DECISION) as step:
-                    step.set_input({"sender_phone": sender_phone})
-                    step.set_output({
-                        "case": "5",
-                        "route": "end_customer",
-                        "organization_id": str(org.id),
-                        "organization_name": org.name,
-                        "customer_id": str(customer.id),
-                        "customer_name": customer.name,
-                    })
-
             response_text = await self._handle_end_customer(
                 org=org,
                 customer=customer,
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
-                tracer=tracer,
             )
 
             sender_type = MessageSenderType.CUSTOMER
 
         # Send response using Twilio
-        if not skip_whatsapp_send:
-            await self.whatsapp.send_text_message(
-                phone_number_id=phone_number_id,
-                to=sender_phone,
-                message=response_text,
-            )
+        await self.whatsapp.send_text_message(
+            phone_number_id=phone_number_id,
+            to=sender_phone,
+            message=response_text,
+        )
 
         await self.db.commit()
 
@@ -617,7 +483,6 @@ class MessageRouter:
         message_content: str,
         sender_name: str | None,
         message_id: str,
-        tracer: ExecutionTracer | None = None,
     ) -> str:
         """Handle message from user in business onboarding flow (Case 1).
 
@@ -629,7 +494,6 @@ class MessageRouter:
             message_content: Message text
             sender_name: WhatsApp profile name
             message_id: Message ID
-            tracer: Optional execution tracer
 
         Returns:
             Response text
@@ -659,7 +523,6 @@ class MessageRouter:
                     message_content=message_content,
                     sender_phone=sender_phone,
                     message_id=message_id,
-                    tracer=tracer,
                 )
 
         # Continue onboarding conversation
@@ -680,7 +543,6 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
-        tracer: ExecutionTracer | None = None,
     ) -> str:
         """Handle first message from pre-registered staff (Case 3).
 
@@ -693,7 +555,6 @@ class MessageRouter:
             message_content: Message text
             sender_phone: Staff phone
             message_id: Message ID
-            tracer: Optional execution tracer
 
         Returns:
             Response text
@@ -728,7 +589,6 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
-                tracer=tracer,
             )
 
         # Process through staff onboarding flow
@@ -747,7 +607,6 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
-                tracer=tracer,
             )
 
         return response
@@ -760,7 +619,6 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
-        tracer: ExecutionTracer | None = None,
     ) -> str:
         """Handle message from staff member for business management (Cases 2a, 4).
 
@@ -770,7 +628,6 @@ class MessageRouter:
             message_content: Message text
             sender_phone: Staff phone
             message_id: Message ID
-            tracer: Optional execution tracer
 
         Returns:
             Response text
@@ -791,7 +648,6 @@ class MessageRouter:
         conversation_handler = ConversationHandler(
             db=self.db,
             organization=org,
-            tracer=tracer,
         )
 
         response = await conversation_handler.handle_staff_message(
@@ -810,7 +666,6 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
-        tracer: ExecutionTracer | None = None,
     ) -> str:
         """Handle message from end customer (Case 5).
 
@@ -826,7 +681,6 @@ class MessageRouter:
             message_content: Message text
             sender_phone: Customer phone
             message_id: Message ID
-            tracer: Optional execution tracer
 
         Returns:
             Response text

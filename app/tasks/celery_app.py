@@ -46,11 +46,6 @@ celery_app.conf.update(
             "task": "app.tasks.reminders.check_and_send_reminders",
             "schedule": 300.0,  # Every 5 minutes
         },
-        "cleanup-old-execution-traces": {
-            "task": "app.tasks.cleanup.cleanup_old_execution_traces",
-            "schedule": 86400.0,  # Every 24 hours (daily)
-            "args": [30],  # Keep 30 days of traces
-        },
         "cleanup-old-function-traces": {
             "task": "app.tasks.cleanup.cleanup_old_function_traces",
             "schedule": 86400.0,  # Every 24 hours (daily)

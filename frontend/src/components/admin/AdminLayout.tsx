@@ -8,7 +8,6 @@ const tabs = [
   { name: 'Dashboard', href: '/admin/dashboard' },
   { name: 'Organizations', href: '/admin/organizations' },
   { name: 'Conversations', href: '/admin/conversations' },
-  { name: 'Playground', href: '/admin/playground' },
   { name: 'Logs', href: '/admin/logs' },
 ];
 

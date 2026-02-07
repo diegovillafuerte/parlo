@@ -300,27 +300,6 @@ class TestMessageRouterWhatsAppResponse:
                 message="¡Hola! Soy Yume...",
             )
 
-    async def test_skip_whatsapp_send_for_playground(
-        self, db, mock_whatsapp_client
-    ):
-        """skip_whatsapp_send=True prevents sending response."""
-        router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
-
-        with patch.object(
-            router, "_handle_business_onboarding", new_callable=AsyncMock
-        ) as mock_handler:
-            mock_handler.return_value = "¡Hola! Soy Yume..."
-
-            await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",
-                sender_phone="+525555556666",
-                message_id="test_msg_009",
-                message_content="Hola",
-                skip_whatsapp_send=True,  # For playground testing
-            )
-
-            mock_whatsapp_client.send_text_message.assert_not_called()
-
 
 class TestMessageRouterCompletedOnboarding:
     """Tests for handling completed onboarding."""
