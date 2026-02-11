@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.tracing import traced
@@ -47,6 +48,10 @@ CUSTOMER_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
+                "service_id": {
+                    "type": "string",
+                    "description": "ID del servicio (UUID). Si está disponible, úsalo en lugar del nombre.",
+                },
                 "service_name": {
                     "type": "string",
                     "description": "Nombre del servicio (ej: 'Corte de cabello', 'Manicure'). Puede ser parcial.",
@@ -59,12 +64,16 @@ CUSTOMER_TOOLS = [
                     "type": "string",
                     "description": "Fecha final en formato YYYY-MM-DD. Para 'esta semana' usa el próximo domingo. Para un día específico, omite este campo.",
                 },
+                "preferred_staff_id": {
+                    "type": "string",
+                    "description": "ID del empleado preferido (opcional).",
+                },
                 "preferred_staff_name": {
                     "type": "string",
                     "description": "Nombre del empleado preferido (opcional). Si el cliente dice 'con María', pasa 'María' aquí.",
                 },
             },
-            "required": ["service_name", "date_from"],
+            "required": ["date_from"],
         },
     },
     {
@@ -73,6 +82,10 @@ CUSTOMER_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
+                "service_id": {
+                    "type": "string",
+                    "description": "ID del servicio a agendar (UUID). Si está disponible, úsalo.",
+                },
                 "service_name": {
                     "type": "string",
                     "description": "Nombre del servicio a agendar",
@@ -80,6 +93,10 @@ CUSTOMER_TOOLS = [
                 "start_time": {
                     "type": "string",
                     "description": "Fecha y hora de inicio en formato ISO (YYYY-MM-DDTHH:MM:SS)",
+                },
+                "staff_id": {
+                    "type": "string",
+                    "description": "ID del empleado (opcional)",
                 },
                 "staff_name": {
                     "type": "string",
@@ -90,7 +107,7 @@ CUSTOMER_TOOLS = [
                     "description": "Nombre del cliente (si lo proporcionó)",
                 },
             },
-            "required": ["service_name", "start_time"],
+            "required": ["start_time"],
         },
     },
     {
@@ -258,6 +275,10 @@ STAFF_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
+                "service_id": {
+                    "type": "string",
+                    "description": "ID del servicio (UUID). Si está disponible, úsalo.",
+                },
                 "service_name": {
                     "type": "string",
                     "description": "Nombre del servicio",
@@ -270,8 +291,12 @@ STAFF_TOOLS = [
                     "type": "string",
                     "description": "Nombre del cliente (opcional)",
                 },
+                "staff_id": {
+                    "type": "string",
+                    "description": "ID del empleado (opcional)",
+                },
             },
-            "required": ["service_name"],
+            "required": [],
         },
     },
     {
@@ -487,20 +512,43 @@ class ToolHandler:
 
     async def _check_availability(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Check available appointment slots."""
+        service_id = tool_input.get("service_id")
         service_name = tool_input.get("service_name", "")
         date_from_str = tool_input.get("date_from", "")
         date_to_str = tool_input.get("date_to", date_from_str)
+        preferred_staff_id = tool_input.get("preferred_staff_id")
         preferred_staff = tool_input.get("preferred_staff_name")
 
-        # Find service by name (fuzzy match)
-        result = await self.db.execute(
-            select(ServiceType).where(
-                ServiceType.organization_id == self.org.id,
-                ServiceType.name.ilike(f"%{service_name}%"),
-                ServiceType.is_active == True,
+        service = None
+        if service_id:
+            try:
+                service_uuid = UUID(service_id)
+            except ValueError:
+                return {"error": "ID de servicio inválido"}
+
+            result = await self.db.execute(
+                select(ServiceType).where(
+                    ServiceType.id == service_uuid,
+                    ServiceType.organization_id == self.org.id,
+                    ServiceType.is_active == True,
+                )
             )
-        )
-        service = result.scalar_one_or_none()
+            service = result.scalar_one_or_none()
+            if not service:
+                return {"error": f"Servicio con ID {service_id} no encontrado"}
+        else:
+            # Find service by name (fuzzy match)
+            if not service_name:
+                return {"error": "Debes indicar un servicio"}
+
+            result = await self.db.execute(
+                select(ServiceType).where(
+                    ServiceType.organization_id == self.org.id,
+                    ServiceType.name.ilike(f"%{service_name}%"),
+                    ServiceType.is_active == True,
+                )
+            )
+            service = result.scalar_one_or_none()
 
         if not service:
             # Return available services
@@ -511,7 +559,7 @@ class ToolHandler:
                 )
             )
             available_services = [
-                f"{s.name} - ${s.price_cents / 100:.0f} ({s.duration_minutes} min)"
+                f"{s.name} (ID: {s.id}) - ${s.price_cents / 100:.0f} ({s.duration_minutes} min)"
                 for s in services_result.scalars().all()
             ]
             return {
@@ -543,7 +591,24 @@ class ToolHandler:
 
         # If preferred staff specified, find their ID
         staff_id = None
-        if preferred_staff:
+        if preferred_staff_id:
+            try:
+                staff_uuid = UUID(preferred_staff_id)
+            except ValueError:
+                return {"error": "ID de empleado inválido"}
+
+            staff_result = await self.db.execute(
+                select(Staff).where(
+                    Staff.id == staff_uuid,
+                    Staff.organization_id == self.org.id,
+                    Staff.is_active == True,
+                )
+            )
+            staff = staff_result.scalar_one_or_none()
+            if not staff:
+                return {"error": "Empleado no encontrado"}
+            staff_id = staff.id
+        elif preferred_staff:
             staff_result = await self.db.execute(
                 select(Staff).where(
                     Staff.organization_id == self.org.id,
@@ -554,9 +619,6 @@ class ToolHandler:
             staff = staff_result.scalar_one_or_none()
             if staff:
                 staff_id = staff.id
-            else:
-                # Staff not found, continue without filter but warn
-                pass
 
         # Get available slots
         slots = await scheduling_service.get_available_slots(
@@ -595,6 +657,7 @@ class ToolHandler:
             slots_by_date[date_key]["times"].append({
                 "time": slot.start_time.strftime("%I:%M %p"),
                 "iso_time": slot.start_time.isoformat(),
+                "staff_id": str(slot.staff_id),
                 "staff_name": slot.staff_name,
             })
 
@@ -613,6 +676,7 @@ class ToolHandler:
 
         return {
             "service": service.name,
+            "service_id": str(service.id),
             "price": f"${service.price_cents / 100:.0f}",
             "duration": f"{service.duration_minutes} min",
             "date_range": f"{date_from_str} a {date_to_str}",
@@ -628,10 +692,12 @@ class ToolHandler:
         if not customer:
             return {"error": "No se pudo identificar al cliente"}
 
+        service_id = tool_input.get("service_id")
         service_name = tool_input.get("service_name", "")
         start_time_str = tool_input.get("start_time", "")
         customer_name = tool_input.get("customer_name")
         staff_name = tool_input.get("staff_name")
+        staff_id_input = tool_input.get("staff_id")
 
         # Update customer name if provided
         if customer_name and not customer.name:
@@ -639,17 +705,37 @@ class ToolHandler:
             await self.db.flush()
 
         # Find service
-        result = await self.db.execute(
-            select(ServiceType).where(
-                ServiceType.organization_id == self.org.id,
-                ServiceType.name.ilike(f"%{service_name}%"),
-                ServiceType.is_active == True,
-            )
-        )
-        service = result.scalar_one_or_none()
+        service = None
+        if service_id:
+            try:
+                service_uuid = UUID(service_id)
+            except ValueError:
+                return {"error": "ID de servicio inválido"}
 
-        if not service:
-            return {"error": f"Servicio '{service_name}' no encontrado"}
+            result = await self.db.execute(
+                select(ServiceType).where(
+                    ServiceType.id == service_uuid,
+                    ServiceType.organization_id == self.org.id,
+                    ServiceType.is_active == True,
+                )
+            )
+            service = result.scalar_one_or_none()
+            if not service:
+                return {"error": f"Servicio con ID '{service_id}' no encontrado"}
+        else:
+            if not service_name:
+                return {"error": "Debes indicar un servicio"}
+            result = await self.db.execute(
+                select(ServiceType).where(
+                    ServiceType.organization_id == self.org.id,
+                    ServiceType.name.ilike(f"%{service_name}%"),
+                    ServiceType.is_active == True,
+                )
+            )
+            service = result.scalar_one_or_none()
+
+            if not service:
+                return {"error": f"Servicio '{service_name}' no encontrado"}
 
         # Parse start time
         try:
@@ -661,7 +747,23 @@ class ToolHandler:
         end_time = start_time + timedelta(minutes=service.duration_minutes)
 
         # Find staff - prefer specified staff, otherwise first available
-        if staff_name:
+        if staff_id_input:
+            try:
+                staff_uuid = UUID(staff_id_input)
+            except ValueError:
+                return {"error": "ID de empleado inválido"}
+
+            staff_result = await self.db.execute(
+                select(Staff).where(
+                    Staff.id == staff_uuid,
+                    Staff.organization_id == self.org.id,
+                    Staff.is_active == True,
+                )
+            )
+            staff = staff_result.scalar_one_or_none()
+            if not staff:
+                return {"error": f"No encontré al empleado con ID '{staff_id_input}'"}
+        elif staff_name:
             staff_result = await self.db.execute(
                 select(Staff).where(
                     Staff.organization_id == self.org.id,
@@ -720,8 +822,8 @@ class ToolHandler:
         appointment = Appointment(
             organization_id=self.org.id,
             location_id=location.id,
-            customer_id=customer.id,
-            staff_id=staff.id,
+            end_customer_id=customer.id,
+            parlo_user_id=staff.id,
             service_type_id=service.id,
             scheduled_start=start_time,
             scheduled_end=end_time,
@@ -729,8 +831,15 @@ class ToolHandler:
             source=AppointmentSource.WHATSAPP.value,
         )
         self.db.add(appointment)
-        await self.db.flush()
-        await self.db.refresh(appointment)
+        try:
+            await self.db.flush()
+            await self.db.refresh(appointment)
+        except IntegrityError:
+            await self.db.rollback()
+            return {
+                "error": "El horario no está disponible. Ya existe una cita en ese horario.",
+                "suggestion": "Por favor pregunta al cliente por otro horario.",
+            }
 
         return {
             "success": True,
@@ -753,7 +862,7 @@ class ToolHandler:
         result = await self.db.execute(
             select(Appointment)
             .where(
-                Appointment.customer_id == customer.id,
+                Appointment.end_customer_id == customer.id,
                 Appointment.scheduled_start >= datetime.now(timezone.utc),
                 Appointment.status.in_([
                     AppointmentStatus.PENDING.value,
@@ -771,7 +880,7 @@ class ToolHandler:
         for apt in appointments:
             # Load related data
             service = await self.db.get(ServiceType, apt.service_type_id)
-            staff = await self.db.get(Staff, apt.staff_id) if apt.staff_id else None
+            staff = await self.db.get(Staff, apt.parlo_user_id) if apt.parlo_user_id else None
 
             formatted.append({
                 "id": str(apt.id),
@@ -807,7 +916,7 @@ class ToolHandler:
             return {"error": "Cita no encontrada"}
 
         # Verify customer owns this appointment
-        if appointment.customer_id != customer.id:
+        if appointment.end_customer_id != customer.id:
             return {"error": "Esta cita no te pertenece"}
 
         appointment.status = AppointmentStatus.CANCELLED.value
@@ -841,7 +950,7 @@ class ToolHandler:
             return {"error": "Cita no encontrada"}
 
         # Verify customer owns this appointment
-        if appointment.customer_id != customer.id:
+        if appointment.end_customer_id != customer.id:
             return {"error": "Esta cita no te pertenece"}
 
         # Get service duration
@@ -855,7 +964,7 @@ class ToolHandler:
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=self.db,
             organization_id=self.org.id,
-            staff_id=appointment.staff_id,
+            staff_id=appointment.parlo_user_id,
             spot_id=appointment.spot_id,
             start_time=new_start_time,
             end_time=new_end_time,
@@ -872,7 +981,14 @@ class ToolHandler:
 
         appointment.scheduled_start = new_start_time
         appointment.scheduled_end = new_end_time
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            return {
+                "error": "El nuevo horario no está disponible. Ya existe una cita en ese horario.",
+                "suggestion": "Por favor elige otro horario.",
+            }
 
         return {
             "success": True,
@@ -938,7 +1054,7 @@ class ToolHandler:
         result = await self.db.execute(
             select(Appointment)
             .where(
-                Appointment.staff_id == staff.id,
+                Appointment.parlo_user_id == staff.id,
                 Appointment.scheduled_start >= date_from,
                 Appointment.scheduled_start <= date_to + timedelta(days=1),
                 Appointment.status.in_([
@@ -953,7 +1069,7 @@ class ToolHandler:
         # Get blocked time for this staff
         blocked_result = await self.db.execute(
             select(Availability).where(
-                Availability.staff_id == staff.id,
+                Availability.parlo_user_id == staff.id,
                 Availability.type == AvailabilityType.EXCEPTION.value,
                 Availability.is_available == False,
                 Availability.exception_date >= date_from.date(),
@@ -965,7 +1081,7 @@ class ToolHandler:
         formatted = []
         for apt in appointments:
             service = await self.db.get(ServiceType, apt.service_type_id)
-            customer = await self.db.get(Customer, apt.customer_id)
+            customer = await self.db.get(Customer, apt.end_customer_id)
 
             formatted.append({
                 "type": "appointment",
@@ -1045,8 +1161,8 @@ class ToolHandler:
         formatted = []
         for apt in appointments:
             service = await self.db.get(ServiceType, apt.service_type_id)
-            customer = await self.db.get(Customer, apt.customer_id)
-            staff = await self.db.get(Staff, apt.staff_id) if apt.staff_id else None
+            customer = await self.db.get(Customer, apt.end_customer_id)
+            staff = await self.db.get(Staff, apt.parlo_user_id) if apt.parlo_user_id else None
 
             formatted.append({
                 "time": apt.scheduled_start.strftime("%I:%M %p"),
@@ -1081,7 +1197,7 @@ class ToolHandler:
 
         # Create availability exception (blocked = not available)
         availability = Availability(
-            staff_id=staff.id,
+            parlo_user_id=staff.id,
             type=AvailabilityType.EXCEPTION.value,
             exception_date=start_time.date(),
             start_time=start_time.time(),
@@ -1146,22 +1262,64 @@ class ToolHandler:
         if not staff:
             return {"error": "No se pudo identificar al empleado"}
 
+        service_id = tool_input.get("service_id")
         service_name = tool_input.get("service_name", "")
         customer_phone = tool_input.get("customer_phone")
         customer_name = tool_input.get("customer_name")
+        staff_id_input = tool_input.get("staff_id")
 
         # Find service
-        result = await self.db.execute(
-            select(ServiceType).where(
-                ServiceType.organization_id == self.org.id,
-                ServiceType.name.ilike(f"%{service_name}%"),
-                ServiceType.is_active == True,
-            )
-        )
-        service = result.scalar_one_or_none()
+        service = None
+        if service_id:
+            try:
+                service_uuid = UUID(service_id)
+            except ValueError:
+                return {"error": "ID de servicio inválido"}
 
-        if not service:
-            return {"error": f"Servicio '{service_name}' no encontrado"}
+            result = await self.db.execute(
+                select(ServiceType).where(
+                    ServiceType.id == service_uuid,
+                    ServiceType.organization_id == self.org.id,
+                    ServiceType.is_active == True,
+                )
+            )
+            service = result.scalar_one_or_none()
+            if not service:
+                return {"error": f"Servicio con ID '{service_id}' no encontrado"}
+        else:
+            if not service_name:
+                return {"error": "Debes indicar un servicio"}
+            result = await self.db.execute(
+                select(ServiceType).where(
+                    ServiceType.organization_id == self.org.id,
+                    ServiceType.name.ilike(f"%{service_name}%"),
+                    ServiceType.is_active == True,
+                )
+            )
+            service = result.scalar_one_or_none()
+
+            if not service:
+                return {"error": f"Servicio '{service_name}' no encontrado"}
+
+        # Resolve staff (optional override)
+        staff_to_use = staff
+        if staff_id_input:
+            try:
+                staff_uuid = UUID(staff_id_input)
+            except ValueError:
+                return {"error": "ID de empleado inválido"}
+
+            staff_result = await self.db.execute(
+                select(Staff).where(
+                    Staff.id == staff_uuid,
+                    Staff.organization_id == self.org.id,
+                    Staff.is_active == True,
+                )
+            )
+            staff_override = staff_result.scalar_one_or_none()
+            if not staff_override:
+                return {"error": "Empleado no encontrado"}
+            staff_to_use = staff_override
 
         # Get or create customer
         customer = None
@@ -1202,7 +1360,7 @@ class ToolHandler:
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=self.db,
             organization_id=self.org.id,
-            staff_id=staff.id,
+            staff_id=staff_to_use.id,
             spot_id=None,
             start_time=start_time,
             end_time=end_time,
@@ -1219,8 +1377,8 @@ class ToolHandler:
         appointment = Appointment(
             organization_id=self.org.id,
             location_id=location.id,
-            customer_id=customer.id,
-            staff_id=staff.id,
+            end_customer_id=customer.id,
+            parlo_user_id=staff_to_use.id,
             service_type_id=service.id,
             scheduled_start=start_time,
             scheduled_end=end_time,
@@ -1228,12 +1386,19 @@ class ToolHandler:
             source=AppointmentSource.WALK_IN.value,
         )
         self.db.add(appointment)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            return {
+                "error": "No puedes registrar el walk-in ahora. Ya existe una cita en ese horario.",
+                "suggestion": "Espera a que termine la cita actual o asigna a otro empleado.",
+            }
 
         return {
             "success": True,
             "message": f"Walk-in registrado: {customer.name or 'Cliente'} para {service.name}",
-            "staff": staff.name,
+            "staff": staff_to_use.name,
             "service": service.name,
         }
 
@@ -1258,7 +1423,7 @@ class ToolHandler:
         # Get appointments
         result = await self.db.execute(
             select(Appointment)
-            .where(Appointment.customer_id == customer.id)
+            .where(Appointment.end_customer_id == customer.id)
             .order_by(Appointment.scheduled_start.desc())
             .limit(10)
         )

@@ -25,7 +25,7 @@ def format_services(services: list[ServiceType]) -> str:
     for service in services:
         price = f"${service.price_cents / 100:.0f} MXN"
         duration = f"{service.duration_minutes} min"
-        lines.append(f"• {service.name} - {price} ({duration})")
+        lines.append(f"• {service.name} (ID: {service.id}) - {price} ({duration})")
 
     return "\n".join(lines)
 
@@ -181,6 +181,7 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 3. SIEMPRE usa check_availability antes de ofrecer horarios. NUNCA inventes.
 4. Si el cliente da nombre durante la conversación, usa update_customer_info.
 5. Para quejas, preguntas de precios especiales o algo complejo: usa handoff_to_human.
+6. Si tienes el ID del servicio o empleado, úsalo en las herramientas (service_id, staff_id).
 
 ## Formato de Fechas y Horarios
 - Natural: "mañana viernes a las 3:00 PM"
