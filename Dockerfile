@@ -7,17 +7,25 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
+# Install Python dependencies first (cached unless pyproject.toml changes)
+COPY pyproject.toml .
+RUN pip install --no-cache-dir hatchling \
+    && pip install --no-cache-dir $(python -c "
+import tomllib
+with open('pyproject.toml', 'rb') as f:
+    deps = tomllib.load(f)['project']['dependencies']
+print(' '.join(deps))
+")
+
+# Copy full application code
 COPY . .
 
-# Install Python dependencies (non-editable for production)
-RUN pip install --no-cache-dir .
+# Install the app package itself (deps already installed, so this is fast)
+RUN pip install --no-cache-dir --no-deps .
 
 # Make startup script executable
 RUN chmod +x start.sh
 
-# Expose port (Render uses this for health checks)
 EXPOSE 8000
 
-# Run startup script
 CMD ["./start.sh"]

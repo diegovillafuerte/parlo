@@ -4,7 +4,7 @@
 databases:
   - name: parlo-staging-db
     region: oregon
-    plan: free
+    plan: starter
     databaseName: parlo_staging
     user: parlo
 
@@ -14,7 +14,7 @@ services:
     name: parlo-staging-backend
     runtime: docker
     region: oregon
-    plan: free
+    plan: starter
     branch: staging
     healthCheckPath: /health
     envVars:
@@ -52,7 +52,7 @@ services:
     name: parlo-staging-frontend
     runtime: node
     region: oregon
-    plan: free
+    plan: starter
     branch: staging
     rootDir: frontend
     buildCommand: npm install && npm run build

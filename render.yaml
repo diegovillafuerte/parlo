@@ -4,7 +4,7 @@
 databases:
   - name: parlo-db
     region: oregon
-    plan: free  # Change to starter for production
+    plan: starter
     databaseName: parlo
     user: parlo
 
@@ -14,7 +14,7 @@ services:
     name: parlo-backend
     runtime: docker
     region: oregon
-    plan: free  # Change to starter for production
+    plan: starter
     healthCheckPath: /health
     envVars:
       - key: APP_ENV
@@ -61,7 +61,7 @@ services:
     name: parlo-frontend
     runtime: node
     region: oregon
-    plan: free  # Change to starter for production
+    plan: starter
     rootDir: frontend
     buildCommand: npm install && npm run build
     startCommand: npm run start
