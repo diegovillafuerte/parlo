@@ -97,6 +97,8 @@
     try {
       await fetch('https://script.google.com/a/macros/parlo.mx/s/AKfycbwo8FSyWJj3WDQ2UsuQn6bO6-VUdT6fKh6QS7bKaYAGxlcRBunajMWL0gRf288yq0OB9A/exec', {
         method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(formData),
       });
     } catch (err) {
