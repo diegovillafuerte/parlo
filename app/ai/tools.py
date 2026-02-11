@@ -800,12 +800,15 @@ class ToolHandler:
         if not location:
             return {"error": "No hay ubicación configurada"}
 
+        # Use staff's default spot for conflict checking and appointment
+        spot_id = staff.default_spot_id
+
         # Check for conflicts before creating
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=self.db,
             organization_id=self.org.id,
             staff_id=staff.id,
-            spot_id=None,  # AI bookings don't specify spot yet
+            spot_id=spot_id,
             start_time=start_time,
             end_time=end_time,
         )
@@ -824,6 +827,7 @@ class ToolHandler:
             location_id=location.id,
             end_customer_id=customer.id,
             parlo_user_id=staff.id,
+            spot_id=spot_id,
             service_type_id=service.id,
             scheduled_start=start_time,
             scheduled_end=end_time,
@@ -1356,12 +1360,15 @@ class ToolHandler:
         start_time = datetime.now(timezone.utc)
         end_time = start_time + timedelta(minutes=service.duration_minutes)
 
+        # Use staff's default spot for conflict checking and appointment
+        spot_id = staff_to_use.default_spot_id
+
         # Check for conflicts before creating
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=self.db,
             organization_id=self.org.id,
             staff_id=staff_to_use.id,
-            spot_id=None,
+            spot_id=spot_id,
             start_time=start_time,
             end_time=end_time,
         )
@@ -1379,6 +1386,7 @@ class ToolHandler:
             location_id=location.id,
             end_customer_id=customer.id,
             parlo_user_id=staff_to_use.id,
+            spot_id=spot_id,
             service_type_id=service.id,
             scheduled_start=start_time,
             scheduled_end=end_time,

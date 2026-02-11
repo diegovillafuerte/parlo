@@ -23,7 +23,7 @@ Flow:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timezone
 from typing import Any
 from uuid import UUID
 
@@ -36,6 +36,8 @@ from app.services.tracing import traced
 from app.ai.client import OpenAIClient, get_openai_client
 from app.utils.phone import normalize_phone_number
 from app.models import (
+    Availability,
+    AvailabilityType,
     Conversation,
     ConversationStatus,
     Location,
@@ -87,6 +89,16 @@ DEFAULT_BUSINESS_HOURS = {
     "friday": {"open": "09:00", "close": "19:00"},
     "saturday": {"open": "09:00", "close": "17:00"},
     "sunday": {"closed": True},
+}
+
+DAY_NAME_TO_WEEKDAY = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
 }
 
 
@@ -1072,6 +1084,41 @@ class OnboardingHandler(ToolCallingMixin):
         logger.warning(f"   ⚠️ Unknown tool: {tool_name} ({elapsed_ms:.0f}ms)")
         return result
 
+    async def _create_availability_records(
+        self,
+        staff_id: UUID,
+        business_hours: dict[str, Any],
+    ) -> None:
+        """Create RECURRING Availability records from business hours.
+
+        Args:
+            staff_id: Staff member to create availability for
+            business_hours: Dict mapping day names to open/close times
+        """
+        for day_name, hours in business_hours.items():
+            if hours.get("closed"):
+                continue
+            open_str = hours.get("open")
+            close_str = hours.get("close")
+            if not open_str or not close_str:
+                continue
+            day_of_week = DAY_NAME_TO_WEEKDAY.get(day_name)
+            if day_of_week is None:
+                continue
+            open_parts = open_str.split(":")
+            close_parts = close_str.split(":")
+            start_time = dt_time(int(open_parts[0]), int(open_parts[1]))
+            end_time = dt_time(int(close_parts[0]), int(close_parts[1]))
+            availability = Availability(
+                parlo_user_id=staff_id,
+                type=AvailabilityType.RECURRING.value,
+                day_of_week=day_of_week,
+                start_time=start_time,
+                end_time=end_time,
+                is_available=True,
+            )
+            self.db.add(availability)
+
     @traced
     async def _activate_organization(self, org: Organization) -> None:
         """Activate an organization after onboarding completes.
@@ -1188,6 +1235,24 @@ class OnboardingHandler(ToolCallingMixin):
             await self.db.flush()
             await self.db.refresh(employee)
             logger.info(f"Created staff (employee): {employee.id} - {employee.name}")
+
+        # Create availability records for all staff from business hours
+        business_hours = collected.get("business_hours", DEFAULT_BUSINESS_HOURS)
+        all_staff_ids = [owner_staff.id] + [
+            emp.id for emp in (
+                await self.db.execute(
+                    select(Staff).where(
+                        Staff.organization_id == org.id,
+                        Staff.role == StaffRole.EMPLOYEE.value,
+                        Staff.is_active == True,
+                    )
+                )
+            ).scalars().all()
+        ]
+        for sid in all_staff_ids:
+            await self._create_availability_records(sid, business_hours)
+        await self.db.flush()
+        logger.info(f"Created availability records for {len(all_staff_ids)} staff members")
 
         # Update organization settings and status
         org_settings = dict(org.settings or {})

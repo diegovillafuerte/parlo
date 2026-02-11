@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from app.models import (
     AppointmentStatus,
     Availability,
     AvailabilityType,
+    Organization,
     ServiceType,
     Staff,
 )
@@ -228,6 +230,13 @@ async def get_available_slots(
 
     duration_minutes = service.duration_minutes
 
+    # Look up organization timezone for interpreting availability times
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == organization_id)
+    )
+    org = org_result.scalar_one_or_none()
+    org_tz = ZoneInfo(org.timezone) if org and org.timezone else ZoneInfo("America/Mexico_City")
+
     # Get staff members
     staff_query = select(Staff).where(
         Staff.organization_id == organization_id,
@@ -287,15 +296,17 @@ async def get_available_slots(
                     continue
 
                 # Generate slots at intervals
+                # Interpret availability times as local (org timezone), then convert to UTC
                 current_time = start_time
                 while True:
-                    # Calculate end time for this slot
-                    slot_start_dt = datetime.combine(current_date, current_time, tzinfo=timezone.utc)
+                    # Combine with local timezone, then convert to UTC for DB queries
+                    slot_start_local = datetime.combine(current_date, current_time, tzinfo=org_tz)
+                    slot_start_dt = slot_start_local.astimezone(timezone.utc)
                     slot_end_dt = slot_start_dt + timedelta(minutes=duration_minutes)
 
-                    # Check if slot fits within available time
-                    slot_end_time = slot_end_dt.time()
-                    if slot_end_time > end_time:
+                    # Check if slot fits within available time (compare in local time)
+                    slot_end_local = slot_end_dt.astimezone(org_tz)
+                    if slot_end_local.time() > end_time:
                         break
 
                     # Check if slot conflicts with existing appointments
@@ -339,9 +350,9 @@ async def get_available_slots(
                             )
                         )
 
-                    # Move to next slot
-                    next_dt = slot_start_dt + timedelta(minutes=slot_interval_minutes)
-                    current_time = next_dt.time()
+                    # Move to next slot (advance in local time to avoid DST issues)
+                    next_local = slot_start_local + timedelta(minutes=slot_interval_minutes)
+                    current_time = next_local.time()
 
         current_date += timedelta(days=1)
 
