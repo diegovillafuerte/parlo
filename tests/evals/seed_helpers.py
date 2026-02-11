@@ -50,7 +50,8 @@ async def seed_active_business(db: AsyncSession) -> dict:
     org = Organization(
         id=org_id,
         name="Eval Test Salon",
-        owner_phone="+525599001001",
+        phone_country_code="+52",
+        phone_number="5599001001",
         timezone="America/Mexico_City",
         status=OrganizationStatus.ACTIVE.value,
         whatsapp_phone_number_id="+525599009999",
@@ -87,7 +88,8 @@ async def seed_active_business(db: AsyncSession) -> dict:
         name="Maria Eval",
         phone_number="+525599001002",
         is_active=True,
-        is_owner=True,
+        role="owner",
+        permission_level="owner",
         first_message_at=datetime.now(timezone.utc),
     )
     db.add(staff)
@@ -182,8 +184,8 @@ async def seed_business_with_appointments(db: AsyncSession) -> dict:
         parlo_user_id=staff.id,
         spot_id=spot.id,
         service_type_id=svc.id,
-        start_time=yesterday.replace(hour=10, minute=0, second=0, microsecond=0),
-        end_time=yesterday.replace(hour=10, minute=30, second=0, microsecond=0),
+        scheduled_start=yesterday.replace(hour=10, minute=0, second=0, microsecond=0),
+        scheduled_end=yesterday.replace(hour=10, minute=30, second=0, microsecond=0),
         status=AppointmentStatus.COMPLETED.value,
         source=AppointmentSource.WHATSAPP.value,
     )
@@ -196,8 +198,8 @@ async def seed_business_with_appointments(db: AsyncSession) -> dict:
         parlo_user_id=staff.id,
         spot_id=spot.id,
         service_type_id=svc.id,
-        start_time=tomorrow.replace(hour=10, minute=0, second=0, microsecond=0),
-        end_time=tomorrow.replace(hour=10, minute=30, second=0, microsecond=0),
+        scheduled_start=tomorrow.replace(hour=10, minute=0, second=0, microsecond=0),
+        scheduled_end=tomorrow.replace(hour=10, minute=30, second=0, microsecond=0),
         status=AppointmentStatus.CONFIRMED.value,
         source=AppointmentSource.WHATSAPP.value,
     )

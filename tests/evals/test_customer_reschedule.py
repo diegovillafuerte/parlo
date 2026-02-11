@@ -20,7 +20,7 @@ async def test_customer_reschedule(eval_db):
     org = data["org"]
     customer = data["customer2"]  # Has the future appointment
     apt = data["future_appointment"]
-    original_start = apt.start_time
+    original_start = apt.scheduled_start
 
     business_number = org.whatsapp_phone_number_id
 
@@ -44,7 +44,7 @@ async def test_customer_reschedule(eval_db):
     await eval_db.refresh(apt)
 
     # May need another confirmation
-    if apt.start_time == original_start and apt.status != AppointmentStatus.CANCELLED.value:
+    if apt.scheduled_start == original_start and apt.status != AppointmentStatus.CANCELLED.value:
         result3, _ = await simulate_message(
             eval_db, customer.phone_number, business_number,
             "Si, confirmo el cambio",
@@ -68,11 +68,11 @@ async def test_customer_reschedule(eval_db):
     assert len(confirmed) >= 1, "Expected at least one confirmed appointment after reschedule"
 
     # Either the original was modified or cancelled+new created
-    times_changed = any(a.start_time != original_start for a in confirmed)
+    times_changed = any(a.scheduled_start != original_start for a in confirmed)
     original_cancelled = apt.status == AppointmentStatus.CANCELLED.value and len(confirmed) >= 1
 
     assert times_changed or original_cancelled, (
         f"Expected appointment time to change or original to be cancelled. "
         f"Original start={original_start}, current appointments: "
-        f"{[(a.start_time, a.status) for a in confirmed]}"
+        f"{[(a.scheduled_start, a.status) for a in confirmed]}"
     )

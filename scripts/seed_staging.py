@@ -67,7 +67,8 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
     org = Organization(
         id=org_id,
         name="Salon Ejemplo",
-        owner_phone="+525510001001",
+        phone_country_code="+52",
+        phone_number="5510001001",
         timezone="America/Mexico_City",
         status=OrganizationStatus.ACTIVE.value,
         whatsapp_phone_number_id="+525510009999",
@@ -111,13 +112,13 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
     staff1 = ParloUser(
         id=staff1_id, organization_id=org_id,
         name="Maria Lopez", phone_number="+525510001002",
-        is_active=True, is_owner=True,
+        is_active=True, role="owner", permission_level="owner",
         first_message_at=datetime.now(timezone.utc),
     )
     staff2 = ParloUser(
         id=staff2_id, organization_id=org_id,
         name="Carlos Ramirez", phone_number="+525510001003",
-        is_active=True, is_owner=False,
+        is_active=True, role="employee", permission_level="staff",
         first_message_at=datetime.now(timezone.utc),
     )
     db.add_all([staff1, staff2])
@@ -191,8 +192,8 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
             id=uuid4(), organization_id=org_id, location_id=loc_id,
             end_customer_id=cust1_id, parlo_user_id=staff1_id,
             spot_id=spot1_id, service_type_id=svc1_id,
-            start_time=two_days_ago.replace(hour=10, minute=0),
-            end_time=two_days_ago.replace(hour=10, minute=30),
+            scheduled_start=two_days_ago.replace(hour=10, minute=0),
+            scheduled_end=two_days_ago.replace(hour=10, minute=30),
             status=AppointmentStatus.COMPLETED.value,
             source=AppointmentSource.WHATSAPP.value,
         ),
@@ -200,8 +201,8 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
             id=uuid4(), organization_id=org_id, location_id=loc_id,
             end_customer_id=cust2_id, parlo_user_id=staff2_id,
             spot_id=spot2_id, service_type_id=svc2_id,
-            start_time=yesterday.replace(hour=14, minute=0),
-            end_time=yesterday.replace(hour=15, minute=30),
+            scheduled_start=yesterday.replace(hour=14, minute=0),
+            scheduled_end=yesterday.replace(hour=15, minute=30),
             status=AppointmentStatus.COMPLETED.value,
             source=AppointmentSource.WHATSAPP.value,
         ),
@@ -230,7 +231,8 @@ async def seed_barberia_test(db: AsyncSession) -> None:
     org = Organization(
         id=org_id,
         name="Barberia Test",
-        owner_phone="+525530001001",
+        phone_country_code="+52",
+        phone_number="5530001001",
         timezone="America/Mexico_City",
         status=OrganizationStatus.ACTIVE.value,
         whatsapp_phone_number_id="+525530009999",
@@ -265,7 +267,7 @@ async def seed_barberia_test(db: AsyncSession) -> None:
     staff = ParloUser(
         id=staff_id, organization_id=org_id,
         name="Luis Morales", phone_number="+525530001002",
-        is_active=True, is_owner=True,
+        is_active=True, role="owner", permission_level="owner",
         first_message_at=datetime.now(timezone.utc),
     )
     db.add(staff)
