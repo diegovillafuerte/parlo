@@ -58,14 +58,14 @@ class TwilioProvisioningService:
     @traced(trace_type="external_api", capture_args=["country_code", "area_code", "limit"])
     async def list_available_numbers(
         self,
-        country_code: str = "MX",
+        country_code: str = "US",
         area_code: str | None = None,
         limit: int = 5,
     ) -> list[dict[str, Any]]:
         """List available phone numbers for purchase.
 
         Args:
-            country_code: ISO country code (default: MX for Mexico)
+            country_code: ISO country code (default: US)
             area_code: Optional area code filter
             limit: Max numbers to return
 
@@ -76,7 +76,8 @@ class TwilioProvisioningService:
             logger.warning("Twilio not configured, returning empty list")
             return []
 
-        url = f"{self.phone_numbers_url}/AvailablePhoneNumbers/{country_code}/Mobile.json"
+        number_type = "Local" if country_code == "US" else "Mobile"
+        url = f"{self.phone_numbers_url}/AvailablePhoneNumbers/{country_code}/{number_type}.json"
         params = {"PageSize": limit}
         if area_code:
             params["AreaCode"] = area_code
@@ -343,7 +344,7 @@ class TwilioProvisioningService:
 async def provision_number_for_business(
     business_name: str,
     webhook_base_url: str,
-    country_code: str = "MX",
+    country_code: str = "US",
 ) -> dict[str, Any] | None:
     """Provision a new phone number for a business and register for WhatsApp.
 
