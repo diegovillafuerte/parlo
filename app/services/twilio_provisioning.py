@@ -175,18 +175,24 @@ class TwilioProvisioningService:
         sender_id = f"whatsapp:{phone_number}"
 
         payload = {
-            "SenderId": sender_id,
-            "Configuration.WabaId": self.waba_id,
-            "Configuration.Profile.Name": business_name,
+            "sender_id": sender_id,
+            "configuration": {
+                "waba_id": self.waba_id,
+            },
+            "profile": {
+                "name": business_name,
+            },
         }
 
         if status_callback_url:
-            payload["StatusCallbackUrl"] = status_callback_url
+            payload["webhook"] = {
+                "status_callback_url": status_callback_url,
+            }
 
         try:
             response = await self.client.post(
                 self.senders_url,
-                data=payload,
+                json=payload,
                 auth=(self.account_sid, self.auth_token),
             )
             response.raise_for_status()
@@ -260,13 +266,15 @@ class TwilioProvisioningService:
 
         url = f"{self.senders_url}/{sender_sid}"
         payload = {
-            "Configuration.VerificationCode": verification_code,
+            "configuration": {
+                "verification_code": verification_code,
+            },
         }
 
         try:
             response = await self.client.post(
                 url,
-                data=payload,
+                json=payload,
                 auth=(self.account_sid, self.auth_token),
             )
             response.raise_for_status()
