@@ -10,12 +10,7 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies first (cached unless pyproject.toml changes)
 COPY pyproject.toml .
 RUN pip install --no-cache-dir hatchling \
-    && pip install --no-cache-dir $(python -c "
-import tomllib
-with open('pyproject.toml', 'rb') as f:
-    deps = tomllib.load(f)['project']['dependencies']
-print(' '.join(deps))
-")
+    && pip install --no-cache-dir $(python -c "import tomllib; f=open('pyproject.toml','rb'); deps=tomllib.load(f)['project']['dependencies']; print(' '.join(deps))")
 
 # Copy full application code
 COPY . .
