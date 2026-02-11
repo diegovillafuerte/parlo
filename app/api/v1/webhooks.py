@@ -109,13 +109,21 @@ async def receive_twilio_webhook(
         form = await request.form()
         params = {k: (v if isinstance(v, str) else str(v)) for k, v in form.items()}
 
+        # Behind a reverse proxy (e.g. Render), request.url shows http://
+        # but Twilio signed against the external https:// URL.
+        # Use X-Forwarded-Proto to reconstruct the correct URL.
+        request_url = str(request.url)
+        forwarded_proto = request.headers.get("X-Forwarded-Proto")
+        if forwarded_proto == "https" and request_url.startswith("http://"):
+            request_url = "https://" + request_url[len("http://"):]
+
         if not signature or not _verify_twilio_signature(
-            request_url=str(request.url),
+            request_url=request_url,
             params=params,
             signature=signature,
             auth_token=settings.twilio_auth_token,
         ):
-            logger.warning("Invalid Twilio signature for webhook request")
+            logger.warning(f"Invalid Twilio signature for webhook request (url={request_url})")
             return PlainTextResponse(content="", status_code=status.HTTP_403_FORBIDDEN)
 
     # Extract phone numbers early for trace context
