@@ -30,6 +30,11 @@ celery -A app.tasks.celery_app beat --loglevel=info    # Scheduler
 # Testing
 pytest                            # Run all tests
 pytest -x                         # Stop on first failure
+pytest tests/evals/ --run-evals -v  # Run AI evals (needs real OPENAI_API_KEY)
+
+# Simulation (local dev — requires server running)
+# POST /api/v1/simulate/message with admin auth
+# GET  /api/v1/simulate/recipients with admin auth
 
 # Database
 alembic revision --autogenerate -m "description"
@@ -266,6 +271,12 @@ NEXT_PUBLIC_PARLO_WHATSAPP_NUMBER=17759674528
 | `app/services/tracing.py` | Function-level tracing decorator |
 | `frontend/src/providers/AuthProvider.tsx` | Auth context |
 | `frontend/src/lib/api/client.ts` | Axios with dual token handling |
+| `app/api/v1/simulate.py` | Simulation endpoints (admin-only, non-production) |
+| `app/schemas/simulate.py` | Simulation request/response models |
+| `frontend/src/app/admin/simulate/page.tsx` | Simulation chat UI |
+| `tests/evals/conftest.py` | Eval fixtures + `simulate_message()` helper |
+| `tests/evals/seed_helpers.py` | Seed functions for eval test data |
+| `render-staging.yaml` | Render blueprint for staging environment |
 
 ## Development Guidelines
 
@@ -321,21 +332,146 @@ Use Playwright to:
 4. Verify the table loads with data
 ```
 
-### Production URLs for Testing
+### URLs for Testing
+**Production:**
 - Admin Dashboard: `https://parlo-frontend.onrender.com/admin`
 - Business Login: `https://parlo-frontend.onrender.com/login`
 - Business Dashboard: `https://parlo-frontend.onrender.com/schedule`
 
+**Staging (preferred for testing changes before production):**
+- Admin Dashboard: `https://parlo-staging-frontend.onrender.com/admin`
+- Simulate: `https://parlo-staging-frontend.onrender.com/admin/simulate`
+
 ### What NOT to do
-- Never say "done" without visual verification on production
+- Never say "done" without visual verification on staging or production
 - Never assume code changes work just because there are no type errors
 - Never skip testing interactive flows (buttons, forms, navigation)
-- Never test UI only on localhost — always verify on production
+- Never test UI only on localhost — always verify on staging/production
+- Never skip simulation testing after changing AI behavior, prompts, or tools
+
+## Message Simulation (IMPORTANT — Use This for Testing)
+
+**You have the ability to test AI conversation flows without real WhatsApp.** Use this proactively whenever you change AI behavior, routing logic, prompts, tools, or onboarding flows. Do not rely on the user to test via WhatsApp — simulate it yourself.
+
+### How It Works
+The simulation API calls the **real** `MessageRouter.route_message()` with `WhatsAppClient(mock_mode=True)`. Everything is real (DB writes, OpenAI calls, state machines) except Twilio delivery. Multi-turn conversations work automatically — same sender+recipient accumulates conversation state.
+
+### Simulation Endpoints (non-production only)
+- `POST /api/v1/simulate/message` — Send a simulated message
+- `GET /api/v1/simulate/recipients` — List available recipient numbers
+- Both require admin auth (`Authorization: Bearer <admin_token>`)
+- Endpoints **do not exist** when `APP_ENV=production` (returns 404)
+
+### Option A: Simulate via Playwright (preferred for visual debugging)
+```
+1. Navigate to the admin simulate page (staging or local)
+2. Log in with admin credentials
+3. Select a recipient (Parlo Central for onboarding, business number for customer/staff)
+4. Enter a sender phone number
+5. Type messages and observe AI responses + routing metadata badges
+6. After testing, check the Logs tab for the full execution trace
+```
+
+**Staging URL:** `https://parlo-staging-frontend.onrender.com/admin/simulate`
+**Local URL:** `http://localhost:3000/admin/simulate`
+
+### Option B: Simulate via curl (for quick checks)
+```bash
+# 1. Get admin token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/admin/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"password":"YOUR_ADMIN_PASSWORD"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# 2. Send a simulated message
+curl -X POST http://localhost:8000/api/v1/simulate/message \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sender_phone": "+525512345678",
+    "recipient_phone": "+14155238886",
+    "message_body": "Hola, quiero registrar mi negocio",
+    "sender_name": "Test User"
+  }'
+
+# 3. List available recipients
+curl http://localhost:8000/api/v1/simulate/recipients \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### When to Simulate
+- **After changing AI prompts** (`app/ai/prompts.py`) — verify the AI still responds correctly
+- **After changing tools** (`app/ai/tools.py`) — verify tools are called and produce correct DB state
+- **After changing routing** (`app/services/message_router.py`) — verify messages route to correct handlers
+- **After changing onboarding** (`app/services/onboarding.py`) — walk through the onboarding flow
+- **After changing customer flows** (`app/services/customer_flows.py`) — test booking/cancel/modify
+- **Before reporting a bug fix as done** — reproduce the original issue, apply fix, simulate again
+
+### Reading the Response
+The simulate endpoint returns:
+```json
+{
+  "message_id": "sim_abc123",
+  "status": "success",
+  "case": "5",              // Routing case (1, 1b, 2a, 2b, 3, 4, 5)
+  "route": "business_whatsapp",  // Handler that processed it
+  "response_text": "¡Hola! ...",  // What the AI would have sent via WhatsApp
+  "sender_type": "customer",     // How the sender was classified
+  "organization_id": "uuid..."   // Which org context was used
+}
+```
+
+### Debugging with Admin Logs After Simulation
+
+After simulating a message, **always check the Logs tab** to understand what happened internally:
+
+1. **Navigate to `/admin/logs`** (via Playwright or browser)
+2. **Find the phone number** you used in the simulation — it appears as a row
+3. **Expand the phone number** → see the correlation timeline (each message = one correlation)
+4. **Expand a correlation** → see the trace waterfall:
+   - `route_message` → which routing case was selected
+   - `_handle_end_customer` / `_handle_business_management` / etc. → which handler ran
+   - `_process_with_tools` → the AI tool-calling loop
+   - `_execute_tool` entries → each AI tool call with `input_summary.tool_name`
+   - `send_text_message` → the outbound WhatsApp (mocked in simulation)
+5. **Click any trace** → see full input/output JSON, duration, and errors
+
+**What to look for:**
+- Red traces = errors (check `error_type` and `error_message`)
+- Orange durations = slow calls (>500ms for traces, >2s for correlations)
+- `ai_tool` traces tell you exactly which tools the AI decided to call and what arguments it used
+- If the AI didn't call the expected tool, check the prompt and tool definitions
+
+### Eval Tests (Automated Regression Testing)
+
+```bash
+# Run all evals (requires real OPENAI_API_KEY + test database)
+pytest tests/evals/ --run-evals -v
+
+# Regular pytest skips evals automatically
+pytest  # evals show as SKIPPED
+```
+
+Evals test end-to-end flows: seed data → simulate messages → assert DB state. They verify tool calls happened and produced correct outcomes (appointments created/cancelled, orgs created, etc.). They do NOT assert on response text wording (non-deterministic).
+
+**Current eval coverage:**
+- `test_customer_booking.py` — Customer books appointment (happy path)
+- `test_customer_cancel.py` — Customer cancels existing appointment
+- `test_customer_reschedule.py` — Customer reschedules appointment
+- `test_staff_schedule.py` — Staff checks their schedule
+- `test_business_onboarding.py` — New business onboarding (2 tests)
 
 ## Debugging
 
 ### Investigation Approach
 When investigating bugs, always check the full call chain from entry point to database layer before reporting findings. Don't stop at the first suspicious code - trace the complete flow.
+
+### Standard Debugging Workflow
+1. **Reproduce via simulation** — Use the simulate endpoint or UI to trigger the bug
+2. **Read the logs** — Check `/admin/logs` for the trace waterfall of the failed request
+3. **Identify the failing trace** — Look for red (error) traces or unexpected tool calls
+4. **Read the code** — Follow the call chain from the trace back to the source
+5. **Fix and re-simulate** — Apply the fix, simulate the same message sequence, verify the fix
+6. **Check evals** — Run `pytest tests/evals/ --run-evals` to ensure no regressions
 
 ### Summarizing Findings
 For debugging sessions, summarize findings with:
@@ -350,6 +486,20 @@ For debugging sessions, summarize findings with:
 - Check tool call format if AI seems stuck
 - Admin dashboard has conversation viewer for debugging
 - **Admin Logs** (`/admin/logs`): View function execution traces with latencies
+- **Simulate tab** (`/admin/simulate`): Test any message flow without real WhatsApp
+
+## Git Workflow
+
+```
+feature-branch → PR to staging → CI passes → merge → staging auto-deploys
+                                                       ↓
+                                              validate on staging
+                                                       ↓
+                                    staging → PR to main → CI passes → merge → production auto-deploys
+```
+
+- CI runs on push/PR to both `main` and `staging` branches
+- Evals can be triggered manually via GitHub Actions (`evals.yml` workflow_dispatch)
 
 ## Session Workflow
 
@@ -411,9 +561,17 @@ NEXT_PUBLIC_API_URL=https://parlo-backend.onrender.com/api/v1
 ```
 
 ### Render URLs
+**Production:**
 - Backend: `https://parlo-backend.onrender.com`
 - Frontend: `https://parlo-frontend.onrender.com`
 - Admin Dashboard: `https://parlo-frontend.onrender.com/admin`
+
+**Staging:**
+- Backend: `https://parlo-staging-backend.onrender.com`
+- Frontend: `https://parlo-staging-frontend.onrender.com`
+- Admin + Simulate: `https://parlo-staging-frontend.onrender.com/admin/simulate`
+- Blueprint file: `render-staging.yaml` (auto-deploys from `staging` branch)
+- Seed script: `python scripts/seed_staging.py` (run against staging DB)
 
 ### Render CLI
 - Load RENDER_API_KEY from .env before running render commands: `export $(grep RENDER_API_KEY .env | xargs)`
