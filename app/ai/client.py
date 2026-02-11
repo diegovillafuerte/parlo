@@ -39,7 +39,7 @@ class OpenAIClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 1024,
-        model: str = "gpt-4.1",
+        model: str = "gpt-4.1-mini",
     ) -> dict[str, Any]:
         """Create a message using GPT.
 
