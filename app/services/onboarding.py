@@ -359,17 +359,13 @@ En 2-3 minutos configuramos tu cuenta:
 - Pregunta si todos hacen todos los servicios o hay especialidades
 - El dueño ya se registra automáticamente con su número actual
 
-### Paso 5: Número de WhatsApp
-Cuando el usuario termine de agregar servicios:
-- Usa `provision_twilio_number` para obtener un número de WhatsApp dedicado para el negocio
-- Parlo le asignará un número de México para que sus clientes puedan agendar citas
-
-### Paso 6: Confirmación y Activación
+### Paso 5: Confirmación y Activación
 - Muestra un resumen de todo lo configurado
 - Pregunta "¿Todo correcto? ¿Activamos tu cuenta?"
-- Si confirman, usa `complete_onboarding` para crear la cuenta
+- Si confirman, usa `complete_onboarding` para crear la cuenta (esto también asigna automáticamente un número de WhatsApp)
+- El resultado de `complete_onboarding` incluirá `whatsapp_number` (el número asignado) o `number_message` si queda pendiente
 - Después usa `send_dashboard_link` para enviar el link al dashboard
-- Explica que sus clientes podrán escribir al número configurado para agendar
+- Incluye el número de WhatsApp asignado en el mensaje final al usuario
 
 ## ⚠️ CRÍTICO: Completar el Registro
 **DEBES llamar la herramienta `complete_onboarding` cuando:**
@@ -377,7 +373,7 @@ Cuando el usuario termine de agregar servicios:
 2. Tienes al menos un servicio (add_service ya fue llamada al menos una vez)
 3. El usuario confirma que está listo ("sí", "listo", "activa", "ok", "perfecto", "correcto", etc.)
 
-**NO esperes a que el usuario diga palabras exactas.** Si ya tienes la información mínima y el usuario da cualquier señal de confirmación, LLAMA `complete_onboarding` con confirmed=true.
+**NO esperes a que el usuario diga palabras exactas.** Si ya tienes la información mínima y el usuario da cualquier señal de confirmación, LLAMA `complete_onboarding` con confirmed=true. Esta herramienta automáticamente asigna un número de WhatsApp, así que NO necesitas llamar `provision_twilio_number` por separado.
 
 **Ejemplos de confirmación del usuario:**
 - "Sí, activa" → LLAMA complete_onboarding
@@ -386,6 +382,10 @@ Cuando el usuario termine de agregar servicios:
 - "Está bien" → LLAMA complete_onboarding
 - "Dale" → LLAMA complete_onboarding
 - "Va" → LLAMA complete_onboarding
+
+**IMPORTANTE sobre el resultado de complete_onboarding:**
+- Si `whatsapp_number` está presente → incluye ese número en tu mensaje al usuario
+- Si solo `number_message` está presente → usa ese texto para informar sobre el número
 
 ## Instrucciones Importantes
 - Habla en español mexicano natural, usa "tú" no "usted"
@@ -871,6 +871,49 @@ class OnboardingHandler(ToolCallingMixin):
                 logger.warning(f"   ⚠️ complete_onboarding: Missing services ({elapsed_ms:.0f}ms)")
                 return {"success": False, "error": "Falta al menos un servicio"}
 
+            # Auto-provision a WhatsApp number if not already done
+            number_info = {}
+            if collected.get("number_status") != "provisioned":
+                logger.info(f"   📞 Auto-provisioning WhatsApp number for {collected['business_name']}")
+                try:
+                    result = await provision_number_for_business(
+                        business_name=collected["business_name"],
+                        webhook_base_url=_settings.app_base_url,
+                        country_code="MX",
+                    )
+                    if result:
+                        collected["twilio_provisioned_number"] = result["phone_number"]
+                        collected["twilio_phone_number_sid"] = result["phone_number_sid"]
+                        collected["twilio_sender_sid"] = result.get("sender_sid")
+                        collected["twilio_sender_status"] = result.get("sender_status")
+                        collected["number_status"] = "provisioned"
+                        org.onboarding_data = collected
+                        await self.db.flush()
+                        number_info = {
+                            "phone_number": result["phone_number"],
+                            "number_status": "provisioned",
+                            "sender_status": result.get("sender_status"),
+                        }
+                        logger.info(f"   ✅ Provisioned number: {result['phone_number']}")
+                    else:
+                        collected["number_status"] = "pending"
+                        org.onboarding_data = collected
+                        await self.db.flush()
+                        number_info = {"number_status": "pending"}
+                        logger.warning(f"   ⚠️ Number provisioning failed, continuing with pending status")
+                except Exception as e:
+                    logger.error(f"   ⚠️ Number provisioning error: {e}", exc_info=True)
+                    collected["number_status"] = "pending"
+                    org.onboarding_data = collected
+                    await self.db.flush()
+                    number_info = {"number_status": "pending"}
+            else:
+                number_info = {
+                    "phone_number": collected.get("twilio_provisioned_number"),
+                    "number_status": "provisioned",
+                    "sender_status": collected.get("twilio_sender_status"),
+                }
+
             # Activate the organization
             try:
                 logger.info(f"   📦 Activating organization: {collected.get('business_name')}")
@@ -881,15 +924,24 @@ class OnboardingHandler(ToolCallingMixin):
                     f"   ONBOARDING COMPLETED!\n"
                     f"   Business: {org.name}\n"
                     f"   Org ID: {org.id}\n"
+                    f"   Number: {number_info.get('phone_number', 'pending')}\n"
                     f"   Duration: {elapsed_ms:.0f}ms\n"
                     f"{'🎉'*20}"
                 )
-                return {
+
+                result = {
                     "success": True,
                     "message": "Registro completado",
                     "organization_id": str(org.id),
                     "business_name": org.name,
                 }
+                # Include number info so the AI can tell the user
+                if number_info.get("phone_number"):
+                    result["whatsapp_number"] = number_info["phone_number"]
+                    result["number_message"] = f"Tu número de WhatsApp es {number_info['phone_number']}"
+                else:
+                    result["number_message"] = "Te asignaremos un número de WhatsApp pronto y te avisaremos por este chat"
+                return result
             except Exception as e:
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.error(f"   ❌ Error activating organization: {e} ({elapsed_ms:.0f}ms)", exc_info=True)

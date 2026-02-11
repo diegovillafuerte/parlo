@@ -39,6 +39,10 @@ services:
         sync: false  # Must set manually in dashboard
       - key: TWILIO_WHATSAPP_NUMBER
         value: whatsapp:+14155238886
+      - key: TWILIO_WABA_ID
+        sync: false  # Must set manually: Parlo's WhatsApp Business Account ID for Senders API
+      - key: APP_BASE_URL
+        sync: false  # Must set manually: https://parlo-backend.onrender.com
       - key: META_APP_ID
         sync: false  # Must set manually in dashboard
       - key: META_APP_SECRET
