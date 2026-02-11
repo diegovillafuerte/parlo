@@ -598,11 +598,10 @@ NEXT_PUBLIC_API_URL=https://parlo-backend.onrender.com/api/v1
 ### Render CLI
 - Load RENDER_API_KEY from .env before running render commands: `export $(grep RENDER_API_KEY .env | xargs)`
 - Use `--output json --confirm` for non-interactive mode
-- Old service IDs (update after decommissioning yume-* services):
-  - Backend: srv-d6006uh4tr6s73a4ctsg
-  - Frontend: srv-d6006gh4tr6s73a4cl9g
-  - Postgres: dpg-d6006gh4tr6s73a4clk0-a
-  - Redis: red-d6006g94tr6s73a4cl90
+- Production service IDs:
+  - Backend: srv-d6600q95pdvs73e3bft0
+  - Frontend: srv-d6600h95pdvs73e3bavg
+  - Postgres: dpg-d6600h95pdvs73e3bb2g-a
 - Key commands: `render services`, `render deploys list`, `render logs`, `render deploys create`
 
 ## References

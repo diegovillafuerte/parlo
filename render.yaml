@@ -41,6 +41,8 @@ services:
         value: whatsapp:+14155238886
       - key: TWILIO_WABA_ID
         sync: false  # Must set manually: Parlo's WhatsApp Business Account ID for Senders API
+      - key: TWILIO_ADDRESS_SID
+        sync: false  # Must set manually: Address SID for purchasing MX numbers
       - key: APP_BASE_URL
         sync: false  # Must set manually: https://parlo-backend.onrender.com
       - key: META_APP_ID

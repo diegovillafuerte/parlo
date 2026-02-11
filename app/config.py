@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     twilio_whatsapp_number: str = ""  # Format: whatsapp:+14155238886
     twilio_waba_id: str = ""  # Parlo's WhatsApp Business Account ID for Senders API
     twilio_senders_webhook_url: str = ""  # Callback URL for sender status changes
+    twilio_address_sid: str = ""  # Address SID required for purchasing MX numbers
 
     # OpenAI
     openai_api_key: str = ""

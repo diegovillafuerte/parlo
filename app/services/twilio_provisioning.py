@@ -122,6 +122,9 @@ class TwilioProvisioningService:
             data["FriendlyName"] = friendly_name
         if webhook_url:
             data["SmsUrl"] = webhook_url
+        # Mexican numbers require a verified address
+        if settings.twilio_address_sid:
+            data["AddressSid"] = settings.twilio_address_sid
 
         try:
             response = await self.client.post(
