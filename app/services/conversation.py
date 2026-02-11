@@ -225,7 +225,7 @@ class ConversationHandler(ToolCallingMixin):
 
         result = await self.db.execute(
             select(Appointment)
-            .where(Appointment.customer_id == customer_id)
+            .where(Appointment.end_customer_id == customer_id)
             .order_by(Appointment.scheduled_start.desc())
             .limit(5)
         )

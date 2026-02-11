@@ -44,7 +44,12 @@ class AvailabilityResponse(BaseModel):
     """Schema for availability responses."""
 
     id: UUID
-    staff_id: UUID
+    parlo_user_id: UUID = Field(
+        ...,
+        validation_alias="staff_id",
+        serialization_alias="staff_id",
+        description="Staff member ID",
+    )
     type: str  # recurring or exception
 
     # For recurring
@@ -59,7 +64,7 @@ class AvailabilityResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 # Schema for requesting available slots

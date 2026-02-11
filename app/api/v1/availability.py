@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_organization_dependency
+from app.api.deps import get_db, require_org_access
 from app.models import Availability, AvailabilityType, Location, Organization, ParloUser
 from app.schemas.availability import (
     AvailabilityResponse,
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/organizations/{org_id}/availability", tags=["availab
 )
 async def create_recurring_availability(
     availability_data: RecurringAvailabilityCreate,
-    org: Annotated[Organization, Depends(get_organization_dependency)],
+    org: Annotated[Organization, Depends(require_org_access)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Availability:
     """Create recurring availability for a staff member (e.g., Mon-Fri 9-5)."""
@@ -43,7 +43,7 @@ async def create_recurring_availability(
         )
 
     availability = Availability(
-        staff_id=availability_data.staff_id,
+        parlo_user_id=availability_data.staff_id,
         type=AvailabilityType.RECURRING.value,
         day_of_week=availability_data.day_of_week,
         start_time=availability_data.start_time,
@@ -64,7 +64,7 @@ async def create_recurring_availability(
 )
 async def create_exception_availability(
     availability_data: ExceptionAvailabilityCreate,
-    org: Annotated[Organization, Depends(get_organization_dependency)],
+    org: Annotated[Organization, Depends(require_org_access)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Availability:
     """Create exception availability (time off, special hours for specific date)."""
@@ -77,7 +77,7 @@ async def create_exception_availability(
         )
 
     availability = Availability(
-        staff_id=availability_data.staff_id,
+        parlo_user_id=availability_data.staff_id,
         type=AvailabilityType.EXCEPTION.value,
         exception_date=availability_data.exception_date,
         is_available=availability_data.is_available,
@@ -98,7 +98,7 @@ async def create_exception_availability(
 )
 async def get_staff_availability(
     staff_id: UUID,
-    org: Annotated[Organization, Depends(get_organization_dependency)],
+    org: Annotated[Organization, Depends(require_org_access)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[Availability]:
     """Get all availability records for a staff member."""
@@ -112,7 +112,7 @@ async def get_staff_availability(
 
     result = await db.execute(
         select(Availability)
-        .where(Availability.staff_id == staff_id)
+        .where(Availability.parlo_user_id == staff_id)
         .order_by(Availability.type, Availability.day_of_week, Availability.exception_date)
     )
     return list(result.scalars().all())
@@ -125,7 +125,7 @@ async def get_staff_availability(
 )
 async def delete_availability(
     availability_id: UUID,
-    org: Annotated[Organization, Depends(get_organization_dependency)],
+    org: Annotated[Organization, Depends(require_org_access)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete an availability record."""
@@ -141,7 +141,7 @@ async def delete_availability(
         )
 
     # Validate staff belongs to org
-    staff = await db.get(ParloUser, availability.staff_id)
+    staff = await db.get(ParloUser, availability.parlo_user_id)
     if not staff or staff.organization_id != org.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -159,7 +159,7 @@ async def delete_availability(
 )
 async def get_available_slots(
     request: AvailableSlotRequest,
-    org: Annotated[Organization, Depends(get_organization_dependency)],
+    org: Annotated[Organization, Depends(require_org_access)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AvailableSlot]:
     """Calculate available appointment slots (THE core scheduling algorithm).

@@ -46,10 +46,10 @@ async def list_appointments(
         query = query.where(Appointment.scheduled_start <= end_dt)
 
     if customer_id:
-        query = query.where(Appointment.customer_id == customer_id)
+        query = query.where(Appointment.end_customer_id == customer_id)
 
     if staff_id:
-        query = query.where(Appointment.staff_id == staff_id)
+        query = query.where(Appointment.parlo_user_id == staff_id)
 
     result = await db.execute(query.order_by(Appointment.scheduled_start))
     return list(result.scalars().all())
@@ -63,8 +63,8 @@ async def create_appointment(
     appointment = Appointment(
         organization_id=organization_id,
         location_id=appointment_data.location_id,
-        customer_id=appointment_data.customer_id,
-        staff_id=appointment_data.staff_id,
+        end_customer_id=appointment_data.end_customer_id,
+        parlo_user_id=appointment_data.parlo_user_id,
         service_type_id=appointment_data.service_type_id,
         scheduled_start=appointment_data.scheduled_start,
         scheduled_end=appointment_data.scheduled_end,
@@ -171,7 +171,7 @@ async def check_appointment_conflicts(
     # Build resource conflict conditions (staff OR spot)
     resource_conditions = []
     if staff_id:
-        resource_conditions.append(Appointment.staff_id == staff_id)
+        resource_conditions.append(Appointment.parlo_user_id == staff_id)
     if spot_id:
         resource_conditions.append(Appointment.spot_id == spot_id)
 
@@ -254,7 +254,7 @@ async def get_available_slots(
             # Get recurring availability for this day of week
             availability_result = await db.execute(
                 select(Availability).where(
-                    Availability.staff_id == staff_member.id,
+                    Availability.parlo_user_id == staff_member.id,
                     Availability.type == AvailabilityType.RECURRING.value,
                     Availability.day_of_week == day_of_week,
                 )
@@ -264,7 +264,7 @@ async def get_available_slots(
             # Get exceptions for this specific date
             exception_result = await db.execute(
                 select(Availability).where(
-                    Availability.staff_id == staff_member.id,
+                    Availability.parlo_user_id == staff_member.id,
                     Availability.type == AvailabilityType.EXCEPTION.value,
                     Availability.exception_date == current_date,
                 )
@@ -301,7 +301,7 @@ async def get_available_slots(
                     # Check if slot conflicts with existing appointments
                     conflict_result = await db.execute(
                         select(Appointment).where(
-                            Appointment.staff_id == staff_member.id,
+                            Appointment.parlo_user_id == staff_member.id,
                             Appointment.status.in_(
                                 [
                                     AppointmentStatus.PENDING.value,

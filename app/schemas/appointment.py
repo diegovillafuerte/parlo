@@ -10,12 +10,24 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class AppointmentBase(BaseModel):
     """Base appointment schema with common fields."""
 
-    customer_id: UUID = Field(..., description="Customer ID")
+    end_customer_id: UUID = Field(
+        ...,
+        validation_alias="customer_id",
+        serialization_alias="customer_id",
+        description="Customer ID",
+    )
     service_type_id: UUID = Field(..., description="Service type ID")
-    staff_id: UUID | None = Field(None, description="Staff ID (null = any available)")
+    parlo_user_id: UUID | None = Field(
+        None,
+        validation_alias="staff_id",
+        serialization_alias="staff_id",
+        description="Staff ID (null = any available)",
+    )
     scheduled_start: datetime = Field(..., description="Appointment start time (UTC)")
     scheduled_end: datetime = Field(..., description="Appointment end time (UTC)")
     notes: str | None = Field(None, description="Appointment notes")
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("scheduled_end")
     @classmethod
@@ -41,7 +53,9 @@ class AppointmentCreate(AppointmentBase):
 class AppointmentUpdate(BaseModel):
     """Schema for updating an appointment (all fields optional)."""
 
-    staff_id: UUID | None = None
+    parlo_user_id: UUID | None = Field(
+        None, validation_alias="staff_id", serialization_alias="staff_id"
+    )
     spot_id: UUID | None = None
     scheduled_start: datetime | None = None
     scheduled_end: datetime | None = None
@@ -51,7 +65,7 @@ class AppointmentUpdate(BaseModel):
     notes: str | None = None
     cancellation_reason: str | None = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 # Schema for cancelling an appointment
@@ -83,4 +97,4 @@ class AppointmentResponse(AppointmentBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

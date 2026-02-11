@@ -71,7 +71,7 @@ def build_flow_aware_system_prompt(
     """
     # Base prompt
     services_list = "\n".join([
-        f"  - {s.name}: ${s.price_cents / 100:.0f} MXN ({s.duration_minutes} min)"
+        f"  - {s.name} (ID: {s.id}): ${s.price_cents / 100:.0f} MXN ({s.duration_minutes} min)"
         for s in services
     ])
 
@@ -125,6 +125,7 @@ def build_flow_aware_system_prompt(
 - Sé breve y amable (máximo 3-4 oraciones)
 - Precios en pesos mexicanos (MXN)
 - Horarios en formato 12h (ej: 2:00 PM)
+- Si tienes el ID del servicio o empleado, úsalo en las herramientas (service_id, staff_id).
 """
 
     # Add flow-specific instructions if in an active flow
@@ -660,7 +661,7 @@ class CustomerFlowHandler:
         """Get customer's appointments."""
         result = await self.db.execute(
             select(Appointment)
-            .where(Appointment.customer_id == customer_id)
+            .where(Appointment.end_customer_id == customer_id)
             .order_by(Appointment.scheduled_start.desc())
             .limit(10)
         )

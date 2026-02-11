@@ -146,7 +146,7 @@ async def lookup_cross_business_profile(
         # Get appointment count for each customer record
         apt_result = await db.execute(
             select(func.count(Appointment.id)).where(
-                Appointment.customer_id == customer.id
+                Appointment.end_customer_id == customer.id
             )
         )
         total_appointments += apt_result.scalar() or 0
@@ -286,7 +286,7 @@ async def get_customer_preferences(
     # Get completed appointments
     result = await db.execute(
         select(Appointment).where(
-            Appointment.customer_id == customer.id,
+            Appointment.end_customer_id == customer.id,
             Appointment.status == AppointmentStatus.COMPLETED.value,
         ).order_by(Appointment.scheduled_start.desc()).limit(20)
     )
