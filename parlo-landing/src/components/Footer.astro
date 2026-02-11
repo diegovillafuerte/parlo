@@ -1,8 +1,13 @@
 ---
+interface Props {
+  tagline?: string;
+}
+
+const { tagline = 'Hecho en México ✂️💅💈' } = Astro.props;
 ---
 
 <footer class="py-8 px-8 text-center text-text-light text-sm bg-white border-t border-border">
-  <p>Hecho en México ✂️💅💈</p>
+  <p>{tagline}</p>
   <p class="mt-3 text-[0.9rem]">
     ¿Dudas o comentarios? Escríbenos a
     <a href="mailto:hola@parlo.mx" class="text-primary font-semibold hover:underline">

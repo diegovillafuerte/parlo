@@ -1,6 +1,13 @@
 ---
 import BenefitCard from './BenefitCard.astro';
-import { benefits } from '../data/benefits';
+import { benefits as defaultBenefits } from '../data/benefits';
+import type { Benefit } from '../data/benefits';
+
+interface Props {
+  benefits?: Benefit[];
+}
+
+const benefits = Astro.props.benefits ?? defaultBenefits;
 ---
 
 <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 max-w-[1200px] mx-auto my-12 px-8">

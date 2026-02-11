@@ -1,17 +1,32 @@
 ---
+interface Props {
+  heading?: string;
+  subtitle?: string;
+  businessPlaceholder?: string;
+  activityPlaceholder?: string;
+  fuente?: string;
+}
+
+const {
+  heading = 'Únete a la lista de espera exclusiva',
+  subtitle = 'Acceso anticipado para un número limitado de estéticas y barberías',
+  businessPlaceholder = 'Estética Glamour',
+  activityPlaceholder = 'Barbería, estética, spa, uñas...',
+  fuente = 'landing-parlo',
+} = Astro.props;
 ---
 
 <section id="form-section" class="py-20 px-8 gradient-bg text-center text-white">
   <div class="max-w-[800px] mx-auto">
     <h2 class="font-heading text-[clamp(2rem,4vw,3rem)] font-extrabold mb-4">
-      Únete a la lista de espera exclusiva
+      {heading}
     </h2>
     <p class="text-lg mb-10 opacity-95">
-      Acceso anticipado para un número limitado de estéticas y barberías
+      {subtitle}
     </p>
 
     <div class="bg-white rounded-3xl p-12 max-w-[550px] mx-auto shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
-      <form id="waitlistForm">
+      <form id="waitlistForm" data-fuente={fuente}>
         <div class="mb-6 text-left">
           <label for="name" class="block mb-2 font-semibold text-text text-sm">Tu nombre</label>
           <input
@@ -30,7 +45,7 @@
             type="text"
             id="business"
             name="business"
-            placeholder="Estética Glamour"
+            placeholder={businessPlaceholder}
             required
             class="w-full p-4 bg-bg border-2 border-border rounded-xl text-base font-body text-text transition-all duration-300 focus:outline-none focus:border-primary focus:bg-white"
           />
@@ -42,7 +57,7 @@
             type="text"
             id="activity"
             name="activity"
-            placeholder="Barbería, estética, spa, uñas..."
+            placeholder={activityPlaceholder}
             required
             class="w-full p-4 bg-bg border-2 border-border rounded-xl text-base font-body text-text transition-all duration-300 focus:outline-none focus:border-primary focus:bg-white"
           />
@@ -91,7 +106,7 @@
       actividad: (document.getElementById('activity') as HTMLInputElement).value,
       whatsapp: (document.getElementById('phone') as HTMLInputElement).value,
       fecha: new Date().toLocaleString('es-MX'),
-      fuente: 'landing-parlo',
+      fuente: form.dataset.fuente || 'landing-parlo',
     };
 
     try {

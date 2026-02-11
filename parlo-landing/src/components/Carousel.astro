@@ -1,7 +1,13 @@
 ---
 import PhoneMockup from './PhoneMockup.astro';
-import { slides } from '../data/slides';
+import { slides as defaultSlides } from '../data/slides';
+import type { SlideData } from '../data/slides';
 
+interface Props {
+  slides?: SlideData[];
+}
+
+const slides = Astro.props.slides ?? defaultSlides;
 const totalSlides = slides.length;
 ---
 

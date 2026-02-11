@@ -1,5 +1,16 @@
 ---
 import Carousel from './Carousel.astro';
+import type { SlideData } from '../data/slides';
+
+interface Props {
+  subtitle?: string;
+  slides?: SlideData[];
+}
+
+const {
+  subtitle = 'Cinco formas en que Parlo transforma tu negocio',
+  slides,
+} = Astro.props;
 ---
 
 <section class="py-20 px-8 bg-white overflow-hidden">
@@ -7,11 +18,11 @@ import Carousel from './Carousel.astro';
     Cómo funciona <span class="gradient-text">Parlo</span>
   </h2>
   <p class="text-center text-text-light text-lg mb-12 max-w-[600px] mx-auto reveal">
-    Cinco formas en que Parlo transforma tu negocio
+    {subtitle}
   </p>
 
   <div class="reveal">
-    <Carousel />
+    <Carousel slides={slides} />
   </div>
 
   <!-- CTA under carousel -->
