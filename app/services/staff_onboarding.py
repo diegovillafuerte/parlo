@@ -539,17 +539,20 @@ class StaffOnboardingHandler:
         )
 
         # Send notification to each owner
+        from app.services.whatsapp import resolve_whatsapp_sender
+
         whatsapp = WhatsAppClient()
         try:
             for owner in owners:
                 if owner.phone_number:
                     logger.info(f"Notifying owner {owner.name} ({owner.phone_number}) about {staff.name}'s onboarding")
                     try:
+                        from_number = resolve_whatsapp_sender(org) or org.whatsapp_phone_number_id
                         await whatsapp.send_text_message(
                             phone_number_id=org.whatsapp_phone_number_id or "",
                             to=owner.phone_number,
                             message=message,
-                            org_access_token=org.whatsapp_access_token,
+                            from_number=from_number,
                         )
                         logger.info(f"✅ Owner notification sent to {owner.name}")
                     except Exception as e:

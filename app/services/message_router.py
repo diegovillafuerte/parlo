@@ -42,12 +42,13 @@ from app.models import (
     ParloUser,
 )
 from app.services import customer as customer_service
+from app.services import organization as org_service
 from app.services import staff as staff_service
 from app.services.conversation import ConversationHandler
 from app.services.customer_flows import CustomerFlowHandler
 from app.services.onboarding import OnboardingHandler, OnboardingState
 from app.services.staff_onboarding import StaffOnboardingHandler
-from app.services.whatsapp import WhatsAppClient
+from app.services.whatsapp import WhatsAppClient, resolve_whatsapp_sender
 
 logger = logging.getLogger(__name__)
 
@@ -233,8 +234,9 @@ class MessageRouter:
                 message_id=message_id,
             )
 
-            await self.whatsapp.send_text_message(
+            await self._send_response(
                 phone_number_id=phone_number_id,
+                from_number=phone_number_id,
                 to=sender_phone,
                 message=response_text,
             )
@@ -262,7 +264,9 @@ class MessageRouter:
                 )
 
                 onboarding_handler = OnboardingHandler(db=self.db)
-                response_text = await onboarding_handler.handle_message(org, message_content)
+                response_text = await onboarding_handler.handle_message(
+                    org, message_content, message_id=message_id
+                )
 
                 # Check if onboarding just completed
                 await self.db.refresh(org)
@@ -270,8 +274,9 @@ class MessageRouter:
                     logger.info(f"   🎉 Onboarding completed! Organization activated.")
                     response_text = _build_onboarding_completion_message(org)
 
-                await self.whatsapp.send_text_message(
+                await self._send_response(
                     phone_number_id=phone_number_id,
+                    from_number=phone_number_id,
                     to=sender_phone,
                     message=response_text,
                 )
@@ -296,7 +301,7 @@ class MessageRouter:
             # Mark first message if needed
             await staff_service.mark_first_message(self.db, staff)
 
-            response_text = await self._handle_business_management(
+            response_text, conversation_id = await self._handle_business_management(
                 org=org,
                 staff=staff,
                 message_content=message_content,
@@ -304,10 +309,12 @@ class MessageRouter:
                 message_id=message_id,
             )
 
-            await self.whatsapp.send_text_message(
+            await self._send_response(
                 phone_number_id=phone_number_id,
+                from_number=phone_number_id,
                 to=sender_phone,
                 message=response_text,
+                conversation_id=conversation_id,
             )
 
             await self.db.commit()
@@ -333,8 +340,9 @@ class MessageRouter:
                 business_list="\n".join(business_names)
             )
 
-            await self.whatsapp.send_text_message(
+            await self._send_response(
                 phone_number_id=phone_number_id,
+                from_number=phone_number_id,
                 to=sender_phone,
                 message=response_text,
             )
@@ -394,7 +402,7 @@ class MessageRouter:
                 # Mark first message
                 await staff_service.mark_first_message(self.db, staff)
 
-                response_text = await self._handle_staff_onboarding(
+                response_text, conversation_id = await self._handle_staff_onboarding(
                     org=org,
                     staff=staff,
                     message_content=message_content,
@@ -437,13 +445,18 @@ class MessageRouter:
 
                     # If onboarding just completed, response is None - use normal handler
                     if response_text is None:
-                        response_text = await self._handle_business_management(
+                        response_text, conversation_id = await self._handle_business_management(
                             org=org,
                             staff=staff,
                             message_content=message_content,
                             sender_phone=sender_phone,
                             message_id=message_id,
                         )
+                    else:
+                        # Use existing staff conversation
+                        conversation_id = (await self._get_or_create_staff_conversation(
+                            org.id, staff.id
+                        )).id
                 else:
                     # Normal business management
                     logger.info(
@@ -452,7 +465,7 @@ class MessageRouter:
                         f"   → Routing to Business Management Handler"
                     )
 
-                    response_text = await self._handle_business_management(
+                    response_text, conversation_id = await self._handle_business_management(
                         org=org,
                         staff=staff,
                         message_content=message_content,
@@ -475,7 +488,7 @@ class MessageRouter:
                 f"   → Routing to End Customer Handler"
             )
 
-            response_text = await self._handle_end_customer(
+            response_text, conversation_id = await self._handle_end_customer(
                 org=org,
                 customer=customer,
                 message_content=message_content,
@@ -485,11 +498,16 @@ class MessageRouter:
 
             sender_type = MessageSenderType.CUSTOMER
 
-        # Send response using Twilio
-        await self.whatsapp.send_text_message(
+        # Resolve sender number for this organization
+        from_number = resolve_whatsapp_sender(org) or phone_number_id
+
+        # Send response using Twilio and store outbound message
+        await self._send_response(
             phone_number_id=phone_number_id,
+            from_number=from_number,
             to=sender_phone,
             message=response_text,
+            conversation_id=conversation_id,
         )
 
         await self.db.commit()
@@ -557,16 +575,19 @@ class MessageRouter:
                 logger.info(
                     f"   Onboarding already complete, redirecting to business management for {org.name}"
                 )
-                return await self._handle_business_management(
+                response_text, _ = await self._handle_business_management(
                     org=org,
                     staff=staff,
                     message_content=message_content,
                     sender_phone=sender_phone,
                     message_id=message_id,
                 )
+                return response_text
 
         # Continue onboarding conversation
-        response = await onboarding_handler.handle_message(org, message_content)
+        response = await onboarding_handler.handle_message(
+            org, message_content, message_id=message_id
+        )
 
         # Check if onboarding just completed
         await self.db.refresh(org)
@@ -584,7 +605,7 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
-    ) -> str:
+    ) -> tuple[str, UUID]:
         """Handle first message from pre-registered staff (Case 3).
 
         Implements the staff onboarding state machine from docs/PROJECT_SPEC.md:
@@ -598,18 +619,19 @@ class MessageRouter:
             message_id: Message ID
 
         Returns:
-            Response text
+            Tuple of (response text, conversation id)
         """
         logger.info(f"   Staff onboarding for {staff.name} at {org.name}")
 
+        conversation = await self._get_or_create_staff_conversation(org.id, staff.id)
+
         # Store the incoming message
         await self._store_message(
-            organization_id=org.id,
-            sender_phone=sender_phone,
-            message_id=message_id,
+            conversation_id=conversation.id,
             direction=MessageDirection.INBOUND,
             sender_type=MessageSenderType.STAFF,
             content=message_content,
+            whatsapp_message_id=message_id,
         )
 
         # Use the staff onboarding handler
@@ -624,13 +646,14 @@ class MessageRouter:
         # Check if onboarding is already complete - use normal handler
         if staff_onboarding_handler.is_onboarding_complete(session):
             logger.info(f"   Staff {staff.name} already onboarded, using normal handler")
-            return await self._handle_business_management(
+            response_text, _ = await self._handle_business_management(
                 org=org,
                 staff=staff,
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
             )
+            return response_text, conversation.id
 
         # Process through staff onboarding flow
         response = await staff_onboarding_handler.handle_message(
@@ -642,15 +665,16 @@ class MessageRouter:
 
         # If onboarding just completed, the response is None - use normal handler
         if response is None:
-            return await self._handle_business_management(
+            response_text, _ = await self._handle_business_management(
                 org=org,
                 staff=staff,
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
             )
+            return response_text, conversation.id
 
-        return response
+        return response, conversation.id
 
     @traced(capture_args=["sender_phone"])
     async def _handle_business_management(
@@ -660,7 +684,7 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
-    ) -> str:
+    ) -> tuple[str, UUID]:
         """Handle message from staff member for business management (Cases 2a, 4).
 
         Args:
@@ -671,18 +695,19 @@ class MessageRouter:
             message_id: Message ID
 
         Returns:
-            Response text
+            Tuple of (response text, conversation id)
         """
         logger.info(f"   Processing business management message with AI handler")
 
+        conversation = await self._get_or_create_staff_conversation(org.id, staff.id)
+
         # Store the incoming message
         await self._store_message(
-            organization_id=org.id,
-            sender_phone=sender_phone,
-            message_id=message_id,
+            conversation_id=conversation.id,
             direction=MessageDirection.INBOUND,
             sender_type=MessageSenderType.STAFF,
             content=message_content,
+            whatsapp_message_id=message_id,
         )
 
         # Use AI conversation handler
@@ -693,11 +718,11 @@ class MessageRouter:
 
         response = await conversation_handler.handle_staff_message(
             staff=staff,
-            conversation=None,  # Staff conversations don't need persistent context
+            conversation=conversation,
             message_content=message_content,
         )
 
-        return response
+        return response, conversation.id
 
     @traced(capture_args=["sender_phone"])
     async def _handle_end_customer(
@@ -707,7 +732,7 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
-    ) -> str:
+    ) -> tuple[str, UUID]:
         """Handle message from end customer (Case 5).
 
         Implements the end customer flow state machines from docs/PROJECT_SPEC.md:
@@ -724,7 +749,7 @@ class MessageRouter:
             message_id: Message ID
 
         Returns:
-            Response text
+            Tuple of (response text, conversation id)
         """
         logger.info(f"   Processing end customer message with CustomerFlowHandler")
 
@@ -733,13 +758,11 @@ class MessageRouter:
 
         # Store the incoming message
         await self._store_message(
-            organization_id=org.id,
-            sender_phone=sender_phone,
-            message_id=message_id,
+            conversation_id=conversation.id,
             direction=MessageDirection.INBOUND,
             sender_type=MessageSenderType.CUSTOMER,
             content=message_content,
-            conversation_id=conversation.id,
+            whatsapp_message_id=message_id,
         )
 
         # Use CustomerFlowHandler for state-tracked customer conversations
@@ -754,7 +777,7 @@ class MessageRouter:
             message_content=message_content,
         )
 
-        return response
+        return response, conversation.id
 
     # ==========================================================================
     # Helper methods
@@ -763,20 +786,17 @@ class MessageRouter:
     async def _find_org_by_whatsapp_phone_id(
         self, phone_number_id: str
     ) -> Organization | None:
-        """Find organization by their WhatsApp Business phone number ID.
+        """Find organization by WhatsApp phone number ID or business phone number.
 
         Args:
-            phone_number_id: Meta's phone number ID for the business
+            phone_number_id: Business identifier from webhook (Twilio E.164 or Meta ID)
 
         Returns:
             Organization or None
         """
-        result = await self.db.execute(
-            select(Organization).where(
-                Organization.whatsapp_phone_number_id == phone_number_id
-            )
+        return await org_service.get_organization_by_whatsapp_phone_id(
+            self.db, phone_number_id
         )
-        return result.scalar_one_or_none()
 
     async def _message_already_processed(self, message_id: str) -> bool:
         """Check if message was already processed (deduplication).
@@ -791,6 +811,34 @@ class MessageRouter:
             select(Message).where(Message.whatsapp_message_id == message_id)
         )
         return result.scalar_one_or_none() is not None
+
+    async def _send_response(
+        self,
+        *,
+        phone_number_id: str,
+        to: str,
+        message: str,
+        from_number: str | None = None,
+        conversation_id: UUID | None = None,
+    ) -> dict[str, str]:
+        """Send a WhatsApp response and optionally store it."""
+        result = await self.whatsapp.send_text_message(
+            phone_number_id=phone_number_id,
+            to=to,
+            message=message,
+            from_number=from_number,
+        )
+
+        if conversation_id:
+            await self._store_message(
+                conversation_id=conversation_id,
+                direction=MessageDirection.OUTBOUND,
+                sender_type=MessageSenderType.AI,
+                content=message,
+                whatsapp_message_id=result.get("sid"),
+            )
+
+        return result
 
     async def _get_or_create_conversation(
         self, organization_id: UUID, customer_id: UUID
@@ -832,26 +880,56 @@ class MessageRouter:
         await self.db.refresh(conversation)
         return conversation
 
+    async def _get_or_create_staff_conversation(
+        self, organization_id: UUID, staff_id: UUID
+    ) -> Conversation:
+        """Get or create active conversation for staff.
+
+        Stores conversations with end_customer_id = NULL and context metadata.
+        """
+        result = await self.db.execute(
+            select(Conversation).where(
+                Conversation.organization_id == organization_id,
+                Conversation.end_customer_id.is_(None),
+                Conversation.status == ConversationStatus.ACTIVE.value,
+                Conversation.context["type"].astext == "staff",
+                Conversation.context["parlo_user_id"].astext == str(staff_id),
+            )
+        )
+        conversation = result.scalar_one_or_none()
+
+        if conversation:
+            conversation.last_message_at = datetime.now(timezone.utc)
+            return conversation
+
+        conversation = Conversation(
+            organization_id=organization_id,
+            end_customer_id=None,
+            status=ConversationStatus.ACTIVE.value,
+            context={"type": "staff", "parlo_user_id": str(staff_id)},
+            last_message_at=datetime.now(timezone.utc),
+        )
+        self.db.add(conversation)
+        await self.db.flush()
+        await self.db.refresh(conversation)
+        return conversation
+
     async def _store_message(
         self,
-        organization_id: UUID,
-        sender_phone: str,
-        message_id: str,
+        conversation_id: UUID,
         direction: MessageDirection,
         sender_type: MessageSenderType,
         content: str,
-        conversation_id: UUID | None = None,
+        whatsapp_message_id: str | None = None,
     ) -> Message:
         """Store message in database.
 
         Args:
-            organization_id: Organization ID
-            sender_phone: Sender's phone
-            message_id: WhatsApp message ID
+            conversation_id: Conversation ID
             direction: Inbound or outbound
             sender_type: Customer, staff, or AI
             content: Message content
-            conversation_id: Conversation ID (optional)
+            whatsapp_message_id: WhatsApp message ID (optional)
 
         Returns:
             Created message
@@ -862,7 +940,7 @@ class MessageRouter:
             sender_type=sender_type.value,
             content_type=MessageContentType.TEXT.value,
             content=content,
-            whatsapp_message_id=message_id,
+            whatsapp_message_id=whatsapp_message_id,
         )
         self.db.add(message)
         await self.db.flush()
