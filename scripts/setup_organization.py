@@ -36,7 +36,7 @@ async def setup_organization():
             # Create organization
             org = Organization(
                 id=uuid4(),
-                name="YumeTesting",
+                name="ParloTesting",
                 phone_country_code="+1",
                 phone_number="+15550441129",
                 whatsapp_phone_number_id="190530860803796",

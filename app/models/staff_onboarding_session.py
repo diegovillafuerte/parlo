@@ -27,7 +27,7 @@ class StaffOnboardingState(str, Enum):
     1. INITIATED - First message received from pre-registered staff
     2. COLLECTING_NAME - Asking for display name confirmation/update
     3. COLLECTING_AVAILABILITY - Asking for working hours preferences
-    4. SHOWING_TUTORIAL - Showing capabilities and how to use Yume
+    4. SHOWING_TUTORIAL - Showing capabilities and how to use Parlo
     5. COMPLETED - Staff fully onboarded
     6. ABANDONED - Staff stopped responding (stores last_active_state in metadata)
     """
@@ -59,7 +59,7 @@ class StaffOnboardingSession(Base, UUIDMixin, TimestampMixin):
     # Link to the pre-registered staff record
     staff_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("yume_users.id", ondelete="CASCADE"),
+        ForeignKey("parlo_users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,  # One onboarding session per staff
         index=True,

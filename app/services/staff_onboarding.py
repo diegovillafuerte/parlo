@@ -28,7 +28,7 @@ from app.models import (
     Staff,
     StaffOnboardingSession,
     StaffOnboardingState,
-    YumeUserPermissionLevel,
+    ParloUserPermissionLevel,
 )
 from app.services.whatsapp import WhatsAppClient
 
@@ -85,7 +85,7 @@ STAFF_ONBOARDING_TOOLS = [
     },
     {
         "name": "complete_tutorial",
-        "description": "Marca el tutorial como visto y completa el onboarding. Úsalo cuando el empleado confirme que entendió cómo usar Yume.",
+        "description": "Marca el tutorial como visto y completa el onboarding. Úsalo cuando el empleado confirme que entendió cómo usar Parlo.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -131,12 +131,12 @@ def build_staff_onboarding_system_prompt(
     else:
         current_step = "Completado"
 
-    return f"""Eres Yume, una asistente de inteligencia artificial que ayuda a empleados de negocios de belleza a gestionar sus citas.
+    return f"""Eres Parlo, una asistente de inteligencia artificial que ayuda a empleados de negocios de belleza a gestionar sus citas.
 
 ## Contexto
 - Negocio: {org.name}
 - Empleado: {current_name}
-- Este es el PRIMER mensaje de {current_name} a Yume
+- Este es el PRIMER mensaje de {current_name} a Parlo
 - El dueño ya lo registró, ahora completamos su configuración
 
 ## Estado Actual
@@ -153,7 +153,7 @@ def build_staff_onboarding_system_prompt(
 - Saluda amablemente y da la bienvenida a {org.name}
 - Pregunta si el nombre "{staff.name}" es correcto o prefieren otro
 - Usa `confirm_name` cuando confirmen o proporcionen su nombre preferido
-- Ejemplo: "¡Hola {staff.name}! Te damos la bienvenida al equipo de {org.name} en Yume. ¿Tu nombre es correcto o prefieres que te llame diferente?"
+- Ejemplo: "¡Hola {staff.name}! Te damos la bienvenida al equipo de {org.name} en Parlo. ¿Tu nombre es correcto o prefieres que te llame diferente?"
 
 ### Paso 2: Disponibilidad (Simplificado)
 - Pregunta si trabajan el mismo horario que el negocio o tienen horario especial
@@ -162,20 +162,20 @@ def build_staff_onboarding_system_prompt(
 - Ejemplo: "¿Trabajas el mismo horario que {org.name}, o tienes un horario diferente?"
 
 ### Paso 3: Tutorial Rápido
-- Explica brevemente qué pueden hacer con Yume:
+- Explica brevemente qué pueden hacer con Parlo:
   - "Ver tu agenda del día" → les muestras sus citas
   - "Bloquear horarios" → para cuando no estén disponibles
   - "Registrar clientes que llegan sin cita" → walk-ins
 - Pregunta si tienen dudas
 - Usa `complete_tutorial` cuando confirmen que entendieron
-- Ejemplo: "Con Yume puedes: ver tu agenda, bloquear horarios cuando no estés, y registrar clientes que lleguen sin cita. ¿Todo claro?"
+- Ejemplo: "Con Parlo puedes: ver tu agenda, bloquear horarios cuando no estés, y registrar clientes que lleguen sin cita. ¿Todo claro?"
 
 ## Instrucciones
 - Habla en español mexicano natural, usa "tú"
 - Sé breve y amable, máximo 3-4 oraciones por mensaje
 - Si el empleado tiene prisa, puedes simplificar el flujo
 - Si dicen "ok", "sí", "listo" → avanza al siguiente paso
-- Si completan el tutorial → notifica que ya pueden usar Yume normalmente
+- Si completan el tutorial → notifica que ya pueden usar Parlo normalmente
 
 ## ⚠️ CRÍTICO
 - SIEMPRE usa las herramientas cuando el usuario responda
@@ -484,7 +484,7 @@ class StaffOnboardingHandler:
         """
         return (
             f"¡Hola {staff.name}! 👋\n\n"
-            f"Bienvenido/a a {org.name} en Yume.\n\n"
+            f"Bienvenido/a a {org.name} en Parlo.\n\n"
             f"Ahora puedes:\n"
             f"• Ver tu agenda del día\n"
             f"• Bloquear horarios\n"
@@ -518,7 +518,7 @@ class StaffOnboardingHandler:
         result = await self.db.execute(
             select(Staff).where(
                 Staff.organization_id == org.id,
-                Staff.permission_level == YumeUserPermissionLevel.OWNER.value,
+                Staff.permission_level == ParloUserPermissionLevel.OWNER.value,
                 Staff.is_active == True,
             )
         )
@@ -530,7 +530,7 @@ class StaffOnboardingHandler:
 
         # Build notification message
         message = (
-            f"🎉 ¡{staff.name} ya está listo para usar Yume!\n\n"
+            f"🎉 ¡{staff.name} ya está listo para usar Parlo!\n\n"
             f"Tu empleado completó su configuración y ahora puede:\n"
             f"• Ver su agenda\n"
             f"• Bloquear horarios\n"

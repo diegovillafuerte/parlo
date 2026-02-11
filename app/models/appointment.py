@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.service_type import ServiceType
     from app.models.spot import Spot
-    from app.models.yume_user import YumeUser
+    from app.models.parlo_user import ParloUser
 
 
 class AppointmentStatus(str, Enum):
@@ -58,9 +58,9 @@ class Appointment(Base, UUIDMixin, TimestampMixin):
     end_customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("end_customers.id", ondelete="CASCADE"), nullable=False
     )
-    yume_user_id: Mapped[uuid.UUID | None] = mapped_column(
+    parlo_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("yume_users.id", ondelete="SET NULL"),
+        ForeignKey("parlo_users.id", ondelete="SET NULL"),
         nullable=True,  # null = any available
     )
     service_type_id: Mapped[uuid.UUID] = mapped_column(
@@ -97,8 +97,8 @@ class Appointment(Base, UUIDMixin, TimestampMixin):
     )
     location: Mapped["Location"] = relationship("Location", back_populates="appointments")
     end_customer: Mapped["EndCustomer"] = relationship("EndCustomer", back_populates="appointments")
-    yume_user: Mapped["YumeUser | None"] = relationship(
-        "YumeUser", back_populates="appointments", foreign_keys=[yume_user_id]
+    parlo_user: Mapped["ParloUser | None"] = relationship(
+        "ParloUser", back_populates="appointments", foreign_keys=[parlo_user_id]
     )
     service_type: Mapped["ServiceType"] = relationship(
         "ServiceType", back_populates="appointments"

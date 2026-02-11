@@ -1422,7 +1422,7 @@ class ToolHandler:
         self, tool_input: dict[str, Any], current_staff: Staff | None
     ) -> dict[str, Any]:
         """Add a new staff member to the organization."""
-        from app.models import YumeUserPermissionLevel
+        from app.models import ParloUserPermissionLevel
 
         name = tool_input.get("name", "").strip()
         phone_number = tool_input.get("phone_number", "").strip()

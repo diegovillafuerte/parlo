@@ -13,16 +13,16 @@ from app.models import (
     Organization,
     OrganizationStatus,
     Location,
-    YumeUser,
-    YumeUserRole,
-    YumeUserPermissionLevel,
+    ParloUser,
+    ParloUserRole,
+    ParloUserPermissionLevel,
     ServiceType,
 )
 from app.services.onboarding import OnboardingState
 
 # Aliases for readability
-Staff = YumeUser
-StaffRole = YumeUserRole
+Staff = ParloUser
+StaffRole = ParloUserRole
 
 
 class MockOpenAIClient:
@@ -154,7 +154,7 @@ async def onboarding_org_initiated(db: AsyncSession) -> Organization:
         name="Carlos",
         phone_number="+525551234567",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -202,7 +202,7 @@ async def onboarding_org_collecting_services(db: AsyncSession) -> Organization:
         name="Maria",
         phone_number="+525559876543",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -254,7 +254,7 @@ async def onboarding_org_with_services(db: AsyncSession) -> Organization:
         name="Juan",
         phone_number="+525551112222",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -315,7 +315,7 @@ async def onboarding_org_ready_for_completion(db: AsyncSession) -> Organization:
         name="Ana",
         phone_number="+525553334444",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -368,7 +368,7 @@ async def onboarding_org_with_twilio_number(db: AsyncSession) -> Organization:
         name="Pedro",
         phone_number="+525555556666",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -426,7 +426,7 @@ async def organization_with_staff(
         name="Pedro",
         phone_number="+525555556666",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -469,7 +469,7 @@ async def onboarding_session_initiated(db: AsyncSession) -> Organization:
         name="Carlos",
         phone_number="+525551234567",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)
@@ -515,7 +515,7 @@ async def onboarding_session_collecting_services(db: AsyncSession) -> Organizati
         name="Maria",
         phone_number="+525559876543",
         role=StaffRole.OWNER.value,
-        permission_level=YumeUserPermissionLevel.OWNER.value,
+        permission_level=ParloUserPermissionLevel.OWNER.value,
         is_active=True,
     )
     db.add(staff)

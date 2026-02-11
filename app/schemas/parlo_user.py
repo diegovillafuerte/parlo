@@ -1,4 +1,4 @@
-"""YumeUser schemas for API requests and responses."""
+"""ParloUser schemas for API requests and responses."""
 
 from datetime import datetime
 from typing import Literal
@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.service_type import ServiceTypeSummary
 
 
-class YumeUserBase(BaseModel):
-    """Base yume user schema with common fields."""
+class ParloUserBase(BaseModel):
+    """Base parlo user schema with common fields."""
 
     name: str = Field(..., min_length=1)
     phone_number: str = Field(..., description="WhatsApp number for identification")
@@ -22,8 +22,8 @@ class YumeUserBase(BaseModel):
     settings: dict = Field(default_factory=dict)
 
 
-class YumeUserCreate(BaseModel):
-    """Schema for creating a new yume user."""
+class ParloUserCreate(BaseModel):
+    """Schema for creating a new parlo user."""
 
     name: str = Field(..., min_length=1)
     phone_number: str = Field(..., description="WhatsApp number")
@@ -35,8 +35,8 @@ class YumeUserCreate(BaseModel):
     settings: dict = Field(default_factory=dict)
 
 
-class YumeUserUpdate(BaseModel):
-    """Schema for updating a yume user - all fields optional."""
+class ParloUserUpdate(BaseModel):
+    """Schema for updating a parlo user - all fields optional."""
 
     name: str | None = Field(None)
     phone_number: str | None = Field(None)
@@ -48,8 +48,8 @@ class YumeUserUpdate(BaseModel):
     settings: dict | None = Field(None)
 
 
-class YumeUserResponse(YumeUserBase):
-    """Schema for yume user API responses."""
+class ParloUserResponse(ParloUserBase):
+    """Schema for parlo user API responses."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,9 +62,9 @@ class YumeUserResponse(YumeUserBase):
     updated_at: datetime
 
 
-class YumeUserServiceAssignment(BaseModel):
-    """Schema for assigning services to a yume user."""
+class ParloUserServiceAssignment(BaseModel):
+    """Schema for assigning services to a parlo user."""
 
     service_type_ids: list[UUID] = Field(
-        ..., description="List of service type IDs this yume user can perform"
+        ..., description="List of service type IDs this parlo user can perform"
     )

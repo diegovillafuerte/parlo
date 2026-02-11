@@ -1,7 +1,7 @@
-"""SQLAlchemy models for Yume."""
+"""SQLAlchemy models for Parlo."""
 
 from app.models.appointment import Appointment, AppointmentSource, AppointmentStatus
-from app.models.associations import spot_service_types, yume_user_service_types
+from app.models.associations import spot_service_types, parlo_user_service_types
 from app.models.auth_token import AuthToken, TokenType
 from app.models.availability import Availability, AvailabilityType
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -18,13 +18,13 @@ from app.models.message import (
 from app.models.organization import Organization, OrganizationStatus
 from app.models.service_type import ServiceType
 from app.models.spot import Spot
-from app.models.yume_user import YumeUser, YumeUserPermissionLevel, YumeUserRole
+from app.models.parlo_user import ParloUser, ParloUserPermissionLevel, ParloUserRole
 from app.models.staff_onboarding_session import StaffOnboardingSession, StaffOnboardingState
 from app.models.customer_flow_session import CustomerFlowSession, CustomerFlowState, CustomerFlowType
 
 # Aliases for backward compatibility
-Staff = YumeUser
-StaffRole = YumeUserRole
+Staff = ParloUser
+StaffRole = ParloUserRole
 Customer = EndCustomer
 
 __all__ = [
@@ -36,8 +36,8 @@ __all__ = [
     "Organization",
     "Location",
     "Spot",
-    "YumeUser",
-    "Staff",  # Alias for YumeUser
+    "ParloUser",
+    "Staff",  # Alias for ParloUser
     "ServiceType",
     "EndCustomer",
     "Customer",  # Alias for EndCustomer
@@ -49,12 +49,12 @@ __all__ = [
     "FunctionTrace",
     # Association Tables
     "spot_service_types",
-    "yume_user_service_types",
+    "parlo_user_service_types",
     # Enums
     "OrganizationStatus",
-    "YumeUserRole",
-    "StaffRole",  # Alias for YumeUserRole
-    "YumeUserPermissionLevel",
+    "ParloUserRole",
+    "StaffRole",  # Alias for ParloUserRole
+    "ParloUserPermissionLevel",
     "AppointmentStatus",
     "AppointmentSource",
     "ConversationStatus",

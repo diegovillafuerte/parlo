@@ -1,4 +1,4 @@
-"""Permission management for Yume staff actions.
+"""Permission management for Parlo staff actions.
 
 This module implements the permission matrix defined in docs/PROJECT_SPEC.md.
 It provides functions to check whether a staff member can perform a specific action.
@@ -7,7 +7,7 @@ It provides functions to check whether a staff member can perform a specific act
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.models import YumeUser
+    from app.models import ParloUser
 
 # Permission Matrix
 # Maps action names to list of permission levels that can perform that action
@@ -68,11 +68,11 @@ TOOL_PERMISSION_MAP: dict[str, str] = {
 }
 
 
-def has_permission(staff: "YumeUser", action: str) -> bool:
+def has_permission(staff: "ParloUser", action: str) -> bool:
     """Check if a staff member has permission to perform an action.
 
     Args:
-        staff: The YumeUser (staff member) to check
+        staff: The ParloUser (staff member) to check
         action: The action name (must be a key in PERMISSION_MATRIX)
 
     Returns:
@@ -82,11 +82,11 @@ def has_permission(staff: "YumeUser", action: str) -> bool:
     return staff.permission_level in allowed_levels
 
 
-def can_use_tool(staff: "YumeUser", tool_name: str) -> bool:
+def can_use_tool(staff: "ParloUser", tool_name: str) -> bool:
     """Check if a staff member can use a specific tool.
 
     Args:
-        staff: The YumeUser (staff member) to check
+        staff: The ParloUser (staff member) to check
         tool_name: The tool name from STAFF_TOOLS
 
     Returns:
@@ -102,7 +102,7 @@ def can_use_tool(staff: "YumeUser", tool_name: str) -> bool:
     return has_permission(staff, action)
 
 
-def get_permission_denied_message(action: str, staff: "YumeUser") -> str:
+def get_permission_denied_message(action: str, staff: "ParloUser") -> str:
     """Get a user-friendly message explaining why permission was denied.
 
     Args:
@@ -166,7 +166,7 @@ def get_allowed_tools_for_permission_level(permission_level: str) -> list[str]:
 
 def filter_tools_by_permission(
     tools: list[dict],
-    staff: "YumeUser"
+    staff: "ParloUser"
 ) -> list[dict]:
     """Filter a list of tool definitions to only include allowed tools.
 

@@ -8,7 +8,7 @@ settings = get_settings()
 
 # Create Celery app
 celery_app = Celery(
-    "yume",
+    "parlo",
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=[

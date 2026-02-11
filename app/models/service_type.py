@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.organization import Organization
     from app.models.spot import Spot
-    from app.models.yume_user import YumeUser
+    from app.models.parlo_user import ParloUser
 
 
 class ServiceType(Base, UUIDMixin, TimestampMixin):
@@ -47,10 +47,10 @@ class ServiceType(Base, UUIDMixin, TimestampMixin):
         secondary="spot_service_types",
         back_populates="service_types",
     )
-    # YumeUsers that can perform this service
-    yume_users: Mapped[list["YumeUser"]] = relationship(
-        "YumeUser",
-        secondary="yume_user_service_types",
+    # ParloUsers that can perform this service
+    parlo_users: Mapped[list["ParloUser"]] = relationship(
+        "ParloUser",
+        secondary="parlo_user_service_types",
         back_populates="service_types",
     )
 

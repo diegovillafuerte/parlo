@@ -6,9 +6,9 @@ Create Date: 2026-01-27 11:00:00.000000
 
 Renames:
 - customers table -> end_customers
-- staff table -> yume_users
-- staff_service_types table -> yume_user_service_types
-- Related columns: customer_id -> end_customer_id, staff_id -> yume_user_id
+- staff table -> parlo_users
+- staff_service_types table -> parlo_user_service_types
+- Related columns: customer_id -> end_customer_id, staff_id -> parlo_user_id
 """
 from typing import Sequence, Union
 
@@ -27,8 +27,8 @@ def upgrade() -> None:
 
     # Step 1: Rename the main tables
     op.rename_table('customers', 'end_customers')
-    op.rename_table('staff', 'yume_users')
-    op.rename_table('staff_service_types', 'yume_user_service_types')
+    op.rename_table('staff', 'parlo_users')
+    op.rename_table('staff_service_types', 'parlo_user_service_types')
 
     # Step 2: Rename indexes on the renamed tables (wrapped in try/except for resilience)
     from sqlalchemy import text
@@ -40,24 +40,24 @@ def upgrade() -> None:
     except Exception:
         pass  # Index might not exist or have different name
 
-    # staff -> yume_users indexes
+    # staff -> parlo_users indexes
     try:
-        conn.execute(text('ALTER INDEX ix_staff_phone_number RENAME TO ix_yume_user_phone_number'))
+        conn.execute(text('ALTER INDEX ix_staff_phone_number RENAME TO ix_parlo_user_phone_number'))
     except Exception:
         pass  # Index might not exist or have different name
 
     # Step 3: Rename columns in appointments table
     op.alter_column('appointments', 'customer_id', new_column_name='end_customer_id')
-    op.alter_column('appointments', 'staff_id', new_column_name='yume_user_id')
+    op.alter_column('appointments', 'staff_id', new_column_name='parlo_user_id')
 
     # Step 4: Rename columns in conversations table
     op.alter_column('conversations', 'customer_id', new_column_name='end_customer_id')
 
     # Step 5: Rename columns in availability table
-    op.alter_column('availability', 'staff_id', new_column_name='yume_user_id')
+    op.alter_column('availability', 'staff_id', new_column_name='parlo_user_id')
 
-    # Step 6: Rename column in yume_user_service_types (association table)
-    op.alter_column('yume_user_service_types', 'staff_id', new_column_name='yume_user_id')
+    # Step 6: Rename column in parlo_user_service_types (association table)
+    op.alter_column('parlo_user_service_types', 'staff_id', new_column_name='parlo_user_id')
 
     # Step 7: Rename constraints (wrapped in try/except for resilience)
     # The constraint names might vary depending on how they were created
@@ -72,7 +72,7 @@ def upgrade() -> None:
 
     # Try to rename staff unique constraint
     try:
-        conn.execute(text('ALTER TABLE yume_users RENAME CONSTRAINT uq_staff_org_phone TO uq_yume_user_org_phone'))
+        conn.execute(text('ALTER TABLE parlo_users RENAME CONSTRAINT uq_staff_org_phone TO uq_parlo_user_org_phone'))
     except Exception:
         pass  # Constraint might not exist or have different name
 
@@ -88,20 +88,20 @@ def downgrade() -> None:
     except Exception:
         pass
     try:
-        conn.execute(text('ALTER TABLE yume_users RENAME CONSTRAINT uq_yume_user_org_phone TO uq_staff_org_phone'))
+        conn.execute(text('ALTER TABLE parlo_users RENAME CONSTRAINT uq_parlo_user_org_phone TO uq_staff_org_phone'))
     except Exception:
         pass
 
     # Step 2: Rename columns back
-    op.alter_column('yume_user_service_types', 'yume_user_id', new_column_name='staff_id')
-    op.alter_column('availability', 'yume_user_id', new_column_name='staff_id')
+    op.alter_column('parlo_user_service_types', 'parlo_user_id', new_column_name='staff_id')
+    op.alter_column('availability', 'parlo_user_id', new_column_name='staff_id')
     op.alter_column('conversations', 'end_customer_id', new_column_name='customer_id')
-    op.alter_column('appointments', 'yume_user_id', new_column_name='staff_id')
+    op.alter_column('appointments', 'parlo_user_id', new_column_name='staff_id')
     op.alter_column('appointments', 'end_customer_id', new_column_name='customer_id')
 
     # Step 3: Rename indexes back (wrapped in try/except for resilience)
     try:
-        conn.execute(text('ALTER INDEX ix_yume_user_phone_number RENAME TO ix_staff_phone_number'))
+        conn.execute(text('ALTER INDEX ix_parlo_user_phone_number RENAME TO ix_staff_phone_number'))
     except Exception:
         pass
     try:
@@ -110,6 +110,6 @@ def downgrade() -> None:
         pass
 
     # Step 4: Rename tables back
-    op.rename_table('yume_user_service_types', 'staff_service_types')
-    op.rename_table('yume_users', 'staff')
+    op.rename_table('parlo_user_service_types', 'staff_service_types')
+    op.rename_table('parlo_users', 'staff')
     op.rename_table('end_customers', 'customers')

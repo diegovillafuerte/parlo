@@ -109,7 +109,7 @@ async def send_meta_webhook(
 
 async def send_twilio_webhook(
     message: str,
-    to_number: str = "+14155238886",  # Yume's Twilio number
+    to_number: str = "+14155238886",  # Parlo's Twilio number
     sender_phone: str = "+525587654321",
     sender_name: str = "Test User",
 ):
@@ -117,7 +117,7 @@ async def send_twilio_webhook(
 
     Args:
         message: Message content to send
-        to_number: Yume's Twilio WhatsApp number (To field)
+        to_number: Parlo's Twilio WhatsApp number (To field)
         sender_phone: Sender's phone number
         sender_name: Sender's name
     """

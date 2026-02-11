@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['staff_id'], ['yume_users.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['staff_id'], ['parlo_users.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
         sa.UniqueConstraint('staff_id', name='uq_staff_onboarding_staff_id'),
     )

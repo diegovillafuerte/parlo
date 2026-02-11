@@ -22,16 +22,17 @@ from app.models import (
     Organization,
     ServiceType,
     Spot,
-    YumeUser,
+    ParloUser,
 )
 
 # Aliases for compatibility
 Customer = EndCustomer
-Staff = YumeUser
+Staff = ParloUser
+
 
 
 # Use a test database
-TEST_DATABASE_URL = settings.async_database_url.replace("/yume", "/yume_test")
+TEST_DATABASE_URL = settings.async_database_url.replace("/parlo", "/parlo_test")
 
 
 @pytest.fixture(scope="session")

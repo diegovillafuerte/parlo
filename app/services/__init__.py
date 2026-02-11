@@ -1,4 +1,4 @@
-"""Business logic services for Yume."""
+"""Business logic services for Parlo."""
 
 # Service modules are imported individually where needed
 # to avoid circular imports

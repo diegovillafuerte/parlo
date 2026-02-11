@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_organization_dependency
-from app.models import Availability, AvailabilityType, Location, Organization, YumeUser
+from app.models import Availability, AvailabilityType, Location, Organization, ParloUser
 from app.schemas.availability import (
     AvailabilityResponse,
     AvailableSlot,
@@ -35,7 +35,7 @@ async def create_recurring_availability(
 ) -> Availability:
     """Create recurring availability for a staff member (e.g., Mon-Fri 9-5)."""
     # Validate staff belongs to org
-    staff = await db.get(YumeUser, availability_data.staff_id)
+    staff = await db.get(ParloUser, availability_data.staff_id)
     if not staff or staff.organization_id != org.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,7 +69,7 @@ async def create_exception_availability(
 ) -> Availability:
     """Create exception availability (time off, special hours for specific date)."""
     # Validate staff belongs to org
-    staff = await db.get(YumeUser, availability_data.staff_id)
+    staff = await db.get(ParloUser, availability_data.staff_id)
     if not staff or staff.organization_id != org.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -103,7 +103,7 @@ async def get_staff_availability(
 ) -> list[Availability]:
     """Get all availability records for a staff member."""
     # Validate staff belongs to org
-    staff = await db.get(YumeUser, staff_id)
+    staff = await db.get(ParloUser, staff_id)
     if not staff or staff.organization_id != org.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -141,7 +141,7 @@ async def delete_availability(
         )
 
     # Validate staff belongs to org
-    staff = await db.get(YumeUser, availability.staff_id)
+    staff = await db.get(ParloUser, availability.staff_id)
     if not staff or staff.organization_id != org.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

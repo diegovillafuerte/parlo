@@ -1,8 +1,8 @@
-# Yume: Project Initialization Prompt for Claude Code
+# Parlo: Project Initialization Prompt for Claude Code
 
 ## Instructions for Claude Code
 
-You are initializing the codebase for **Yume**, a WhatsApp-native AI scheduling assistant for beauty businesses in Mexico (hair and nail saloons, etc.). This document provides complete business and technical context. Your first task is to create the project structure, including a comprehensive README.md that will serve as the source of truth for any engineer or AI agent working on this codebase.
+You are initializing the codebase for **Parlo**, a WhatsApp-native AI scheduling assistant for beauty businesses in Mexico (hair and nail saloons, etc.). This document provides complete business and technical context. Your first task is to create the project structure, including a comprehensive README.md that will serve as the source of truth for any engineer or AI agent working on this codebase.
 
 Read this entire document before writing any code. Ask clarifying questions if anything is ambiguous.
 
@@ -10,11 +10,11 @@ Read this entire document before writing any code. Ask clarifying questions if a
 
 ## Part 1: Business Context
 
-### What is Yume?
+### What is Parlo?
 
-Yume is a conversational AI that handles appointment scheduling for beauty businesses (barbershops, nail salons, hair salons, spas) in Mexico via WhatsApp. Business owners connect their existing WhatsApp number, and Yume automatically handles booking conversations with their customers.
+Parlo is a conversational AI that handles appointment scheduling for beauty businesses (barbershops, nail salons, hair salons, spas) in Mexico via WhatsApp. Business owners connect their existing WhatsApp number, and Parlo automatically handles booking conversations with their customers.
 
-**The one-liner:** "Connect Yume to your WhatsApp in 2 minutes. Watch your appointments start booking themselves."
+**The one-liner:** "Connect Parlo to your WhatsApp in 2 minutes. Watch your appointments start booking themselves."
 
 ### The Problem We Solve
 
@@ -33,9 +33,9 @@ This is painful because:
 
 ### Our Solution
 
-Yume integrates with the business owner's existing WhatsApp number using Meta's Coexistence feature. When a customer messages to book:
+Parlo integrates with the business owner's existing WhatsApp number using Meta's Coexistence feature. When a customer messages to book:
 
-1. Yume's AI handles the conversation naturally in Spanish
+1. Parlo's AI handles the conversation naturally in Spanish
 2. Checks real-time availability
 3. Books the appointment
 4. Sends confirmation to customer
@@ -68,9 +68,9 @@ The business owner can watch all conversations happen in their WhatsApp Business
 **Journey 1: Business Owner Onboarding (target: 10 minutes)**
 
 ```
-Owner discovers Yume (ad, referral, social)
+Owner discovers Parlo (ad, referral, social)
   → Clicks link to WhatsApp
-  → Chats with Yume onboarding bot
+  → Chats with Parlo onboarding bot
   → Connects their WhatsApp via Embedded Signup (scans QR code)
   → Provides business name, services, prices, durations, hours, etc.
   → Done—ready to receive bookings
@@ -81,27 +81,27 @@ Owner discovers Yume (ad, referral, social)
 
 ```
 Customer messages business WhatsApp: "Hola, quiero una cita"
-  → Yume responds, asks what service
+  → Parlo responds, asks what service
   → Customer: "Un corte"
-  → Yume shows available slots for requested timeframe
+  → Parlo shows available slots for requested timeframe
   → Customer picks slot
-  → Yume confirms booking
-  → Yume notifies business owner
-  → Day before: Yume sends reminder to customer
-  → After appointment: Yume optionally requests Google review
+  → Parlo confirms booking
+  → Parlo notifies business owner
+  → Day before: Parlo sends reminder to customer
+  → After appointment: Parlo optionally requests Google review
 ```
 
 **Journey 3: Staff Daily Operations (via their personal WhatsApp)**
 
 ```
-Staff member messages Yume from their registered phone number
-  → Yume recognizes them as staff (not a customer)
+Staff member messages Parlo from their registered phone number
+  → Parlo recognizes them as staff (not a customer)
   → Staff: "¿Qué tengo hoy?"
-  → Yume shows their schedule for the day
+  → Parlo shows their schedule for the day
   → Staff: "Bloquea de 2 a 3 para mi comida"
-  → Yume blocks that time slot
+  → Parlo blocks that time slot
   → Staff: "El cliente de las 11 no llegó"
-  → Yume marks appointment as no-show
+  → Parlo marks appointment as no-show
   → Staff can also book walk-ins, view customer history, etc.
 ```
 
@@ -110,13 +110,13 @@ Staff member messages Yume from their registered phone number
 ```
 Morning: Owner receives daily schedule summary via WhatsApp
 During day: Gets notified of new bookings, can see in app
-Anytime: Can message Yume "mi agenda" to see upcoming appointments
+Anytime: Can message Parlo "mi agenda" to see upcoming appointments
 For complex tasks: Uses web dashboard (view week, manage staff, block time, etc.)
 ```
 
 ### Staff as WhatsApp Users
 
-A key architectural decision: **staff members interact with Yume via their personal WhatsApp accounts.** This means:
+A key architectural decision: **staff members interact with Parlo via their personal WhatsApp accounts.** This means:
 
 1. During onboarding, the owner registers staff with their phone numbers
 2. When a staff member messages the business's WhatsApp number, they're identified by their phone number and treated as staff (not customers)
@@ -154,7 +154,7 @@ Competitors in scheduling:
 - **Calendly, Cal.com:** Not WhatsApp-native, not localized for Mexico, not vertical-specific
 - **Square Appointments:** Payment-first, more complex than needed
 
-Yume differentiators:
+Parlo differentiators:
 - WhatsApp-native (meets businesses where they are)
 - AI-first (no app to learn, no buttons to click)
 - Mexico-first (Spanish-native, local payment methods later, peso pricing)
@@ -265,9 +265,9 @@ Location:
     created_at: datetime
     updated_at: datetime
 
-# YumeUser (Staff): People who provide services (also users who can interact via WhatsApp)
-# NOTE: Model class is YumeUser, with backward-compat alias "Staff"
-YumeUser:
+# ParloUser (Staff): People who provide services (also users who can interact via WhatsApp)
+# NOTE: Model class is ParloUser, with backward-compat alias "Staff"
+ParloUser:
     id: UUID
     organization_id: FK → Organization
     location_id: FK → Location (optional, null = all locations)
@@ -284,7 +284,7 @@ YumeUser:
     updated_at: datetime
 
     # Unique constraint: (organization_id, phone_number)
-    # This phone number is how we identify staff when they message Yume
+    # This phone number is how we identify staff when they message Parlo
 
 # ServiceType: What the business offers
 ServiceType:
@@ -422,7 +422,7 @@ AuthToken:
 # StaffOnboardingSession: Tracks staff WhatsApp onboarding progress
 StaffOnboardingSession:
     id: UUID
-    staff_id: FK → YumeUser (unique)
+    staff_id: FK → ParloUser (unique)
     organization_id: FK → Organization
     state: enum (initiated, collecting_name, collecting_availability, showing_tutorial, completed, abandoned)
     collected_data: JSONB    # Data gathered during onboarding
@@ -542,13 +542,13 @@ GET    /api/v1/admin/activity             # Activity feed
 **Twilio WhatsApp API Integration:**
 
 1. **Number Provisioning (Hybrid Approach):**
-   - Yume provisions dedicated Twilio WhatsApp numbers for each business
-   - Business is live immediately with their Yume-provisioned number
+   - Parlo provisions dedicated Twilio WhatsApp numbers for each business
+   - Business is live immediately with their Parlo-provisioned number
    - Optional: Connect existing WhatsApp Business number via Meta Embedded Signup
    - Multi-business routing based on phone_number_id in webhook
 
 2. **Webhook Setup:**
-   - Register webhook URL with Twilio: `https://api.yume.mx/api/v1/webhooks/whatsapp`
+   - Register webhook URL with Twilio: `https://api.parlo.mx/api/v1/webhooks/whatsapp`
    - Twilio sends webhook for incoming messages and status updates
    - Each business's provisioned number points to same webhook endpoint
 
@@ -806,9 +806,9 @@ def build_system_prompt(self) -> str:
 
 ### Message Routing Architecture
 
-Yume operates two distinct WhatsApp channels:
+Parlo operates two distinct WhatsApp channels:
 
-1. **Yume's Central Number** - For B2B interactions (business onboarding and management)
+1. **Parlo's Central Number** - For B2B interactions (business onboarding and management)
 2. **Business Numbers** - For B2C interactions (end customers) and staff of that specific business
 
 Every incoming WhatsApp message is routed based on:
@@ -819,11 +819,11 @@ Every incoming WhatsApp message is routed based on:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         YUME MESSAGE ROUTING                                 │
+│                         PARLO MESSAGE ROUTING                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   ┌───────────────────────┐         ┌───────────────────────────────────┐  │
-│   │  YUME CENTRAL NUMBER  │         │     BUSINESS NUMBERS (per biz)    │  │
+│   │  PARLO CENTRAL NUMBER  │         │     BUSINESS NUMBERS (per biz)    │  │
 │   │                       │         │                                   │  │
 │   │  Purpose: B2B         │         │  Purpose: B2C + Staff             │  │
 │   │  - Business onboarding│         │  - End customer bookings          │  │
@@ -843,7 +843,7 @@ Every incoming WhatsApp message is routed based on:
 1. **Staff registration is business-specific.** Maria can be staff at "Salon A" but is just a customer at "Barber Shop B".
 
 2. **Management access is flexible.** Business owners/staff can manage their business via:
-   - Yume's central WhatsApp number
+   - Parlo's central WhatsApp number
    - Their own business WhatsApp number
    - The web portal
 
@@ -855,10 +855,10 @@ Every incoming WhatsApp message is routed based on:
 flowchart TD
     START([Incoming WhatsApp Message]) --> CHECK_RECIPIENT{Which number<br/>received this?}
 
-    CHECK_RECIPIENT -->|Yume Central Number| CENTRAL_FLOW
+    CHECK_RECIPIENT -->|Parlo Central Number| CENTRAL_FLOW
     CHECK_RECIPIENT -->|Business Number X| BUSINESS_FLOW
 
-    subgraph CENTRAL_FLOW [Yume Central Number Flow]
+    subgraph CENTRAL_FLOW [Parlo Central Number Flow]
         C1{Sender in DB?}
         C1 -->|No / Incomplete Onboarding| CASE1[Case 1: Business Onboarding]
         C1 -->|Yes - Registered| C2{Registered to<br/>how many businesses?}
@@ -886,9 +886,9 @@ flowchart TD
 
 | Case | Recipient | Sender Identification | Route To | Actions Available |
 |------|-----------|----------------------|----------|-------------------|
-| **1** | Yume Central | Unknown OR incomplete onboarding | Business Onboarding Flow | Gather info, provision number, complete setup |
-| **2a** | Yume Central | Staff/owner of exactly 1 business | Business Management Flows | All management actions per permissions |
-| **2b** | Yume Central | Staff/owner of multiple businesses | Redirect Message | Send: "You're registered to multiple businesses, please text them directly" |
+| **1** | Parlo Central | Unknown OR incomplete onboarding | Business Onboarding Flow | Gather info, provision number, complete setup |
+| **2a** | Parlo Central | Staff/owner of exactly 1 business | Business Management Flows | All management actions per permissions |
+| **2b** | Parlo Central | Staff/owner of multiple businesses | Redirect Message | Send: "You're registered to multiple businesses, please text them directly" |
 | **3** | Business Number X | Pre-registered staff (first message) | Staff Onboarding Flow | Collect name, availability, show tutorial |
 | **4** | Business Number X | Known staff for Business X | Business Management Flows | All management actions per permissions |
 | **5** | Business Number X | Anyone not staff of Business X | End Customer Flows | Booking, inquiry, modify, cancel |
@@ -899,7 +899,7 @@ flowchart TD
 async def route_message(recipient_number: str, sender_phone: str, message: str):
     """Main message routing logic."""
 
-    if recipient_number == YUME_CENTRAL_NUMBER:
+    if recipient_number == PARLO_CENTRAL_NUMBER:
         # Central number flow
         registrations = await get_staff_registrations(sender_phone)
 
@@ -938,7 +938,7 @@ async def route_message(recipient_number: str, sender_phone: str, message: str):
 ```
 Incoming Message
 │
-├── Recipient = Yume Central Number?
+├── Recipient = Parlo Central Number?
 │   ├── Sender = Unknown/Incomplete? → BUSINESS ONBOARDING
 │   ├── Sender = Staff of 1 business? → BUSINESS MANAGEMENT
 │   └── Sender = Staff of 2+ businesses? → REDIRECT MESSAGE
@@ -965,7 +965,7 @@ All flows use state machines to track progress. Each state represents a step in 
 
 #### 1. Business Onboarding Flow
 
-**Trigger:** Message to Yume Central from unknown number or incomplete onboarding.
+**Trigger:** Message to Parlo Central from unknown number or incomplete onboarding.
 
 ```mermaid
 stateDiagram-v2
@@ -1371,21 +1371,21 @@ These flows don't require state machines - they're single request/response:
 
 ### Number Provisioning
 
-When a new business completes onboarding, Yume automatically provisions a WhatsApp number.
+When a new business completes onboarding, Parlo automatically provisions a WhatsApp number.
 
 #### Technical Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    YUME WHATSAPP INFRASTRUCTURE                          │
+│                    PARLO WHATSAPP INFRASTRUCTURE                          │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   ┌─────────────┐     ┌─────────────┐     ┌─────────────────────────┐  │
-│   │    Yume     │     │   Twilio    │     │   Meta Business Suite   │  │
+│   │    Parlo     │     │   Twilio    │     │   Meta Business Suite   │  │
 │   │   Backend   │────▶│    API      │────▶│   (WABA via Twilio)    │  │
 │   └─────────────┘     └─────────────┘     └─────────────────────────┘  │
 │                                                                         │
-│   Single WABA (WhatsApp Business Account) owned by Yume                │
+│   Single WABA (WhatsApp Business Account) owned by Parlo                │
 │   All business numbers registered under this WABA                       │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -1393,7 +1393,7 @@ When a new business completes onboarding, Yume automatically provisions a WhatsA
 
 #### Provisioning Flow
 
-1. **Business Completes Onboarding** via WhatsApp conversation with Yume
+1. **Business Completes Onboarding** via WhatsApp conversation with Parlo
 
 2. **Backend Provisions Number:**
    ```python
@@ -1402,15 +1402,15 @@ When a new business completes onboarding, Yume automatically provisions a WhatsA
        phone_number = await twilio.available_phone_numbers("MX").fetch()
        purchased = await twilio.incoming_phone_numbers.create(phone_number=phone_number)
 
-       # 2. Register as WhatsApp sender under Yume's WABA
+       # 2. Register as WhatsApp sender under Parlo's WABA
        sender = await twilio.messaging.senders.create(
            phone_number=purchased.phone_number,
-           waba_id=YUME_WABA_ID
+           waba_id=PARLO_WABA_ID
        )
 
-       # 3. Configure webhook to point to Yume's central endpoint
+       # 3. Configure webhook to point to Parlo's central endpoint
        await twilio.webhooks.create(
-           url=f"{YUME_API_URL}/api/v1/webhooks/whatsapp",
+           url=f"{PARLO_API_URL}/api/v1/webhooks/whatsapp",
            phone_number=purchased.phone_number
        )
 
@@ -1430,7 +1430,7 @@ When a new business completes onboarding, Yume automatically provisions a WhatsA
 
 | Aspect | Details |
 |--------|---------|
-| **WABA** | Single verified Meta Business Portfolio owned by Yume |
+| **WABA** | Single verified Meta Business Portfolio owned by Parlo |
 | **Number Source** | Mexican numbers via Twilio Number API |
 | **Webhook** | All numbers point to same central webhook endpoint |
 | **Display Name** | Async approval (250 unique customers/day limit is fine) |
@@ -1552,7 +1552,7 @@ When implementing message routing:
 
 ```python
 def build_system_prompt(self) -> str:
-    return f"""Eres Yume, la asistente virtual de {self.org.name}. Tu trabajo es ayudar a los clientes a agendar citas de manera amable y eficiente.
+    return f"""Eres Parlo, la asistente virtual de {self.org.name}. Tu trabajo es ayudar a los clientes a agendar citas de manera amable y eficiente.
 
 ## Información del Negocio
 - Nombre: {self.org.name}
@@ -1583,7 +1583,7 @@ def build_system_prompt(self) -> str:
 """
 
 def build_staff_system_prompt(self) -> str:
-    return f"""Eres Yume, la asistente virtual de {self.org.name}. Estás hablando con {self.staff.name}, que es {self.staff.role} del negocio.
+    return f"""Eres Parlo, la asistente virtual de {self.org.name}. Estás hablando con {self.staff.name}, que es {self.staff.role} del negocio.
 
 ## Información del Negocio
 - Nombre: {self.org.name}
@@ -1624,7 +1624,7 @@ Como empleado, {self.staff.name} puede pedirte:
 ### Project Structure
 
 ```
-yume/
+parlo/
 ├── README.md                    # Comprehensive project documentation
 ├── pyproject.toml               # Python dependencies (using Poetry or uv)
 ├── alembic.ini                  # Database migrations config
@@ -1715,10 +1715,10 @@ yume/
 # Application
 APP_ENV=development  # development, staging, production
 APP_SECRET_KEY=your-secret-key-here
-APP_BASE_URL=https://api.yume.mx
+APP_BASE_URL=https://api.parlo.mx
 
 # Database
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/yume
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/parlo
 
 # Redis
 REDIS_URL=redis://localhost:6379/0
@@ -1741,7 +1741,7 @@ SENTRY_DSN=
 ```bash
 # 1. Clone and enter project
 git clone <repo>
-cd yume
+cd parlo
 
 # 2. Install dependencies (using uv for speed)
 uv venv
@@ -1770,7 +1770,7 @@ ngrok http 8000
 
 ---
 
-### Yume - Functional Requirements Checklist
+### Parlo - Functional Requirements Checklist
 
 This is the comprehensive list of all functional requirements that the system must satisfy to be production-ready. Each user type has journeys from which specific required functionalities are defined.
 
@@ -1781,14 +1781,14 @@ This is the comprehensive list of all functional requirements that the system mu
 
 ---
 
-## 1. Owner of a business that uses the Yume platform
+## 1. Owner of a business that uses the Parlo platform
 
 The business owner is the primary paying customer. They set up the business, manage employees, and oversee operations.
 
 ### 1.1 Create an account for my business
 | # | Requirement | UI | Status |
 |---|-------------|----|----|
-| 1.1.1 | Send a WhatsApp message to Yume's onboarding number to get started | WA | [ ] |
+| 1.1.1 | Send a WhatsApp message to Parlo's onboarding number to get started | WA | [ ] |
 | 1.1.2 | Conversationally provide business name during onboarding | WA | [ ] |
 | 1.1.3 | Conversationally provide business type/category (barbershop, salon, spa, etc.) | WA | [ ] |
 | 1.1.4 | Conversationally provide owner's name | WA | [ ] |
@@ -1918,16 +1918,16 @@ The business owner is the primary paying customer. They set up the business, man
 
 ---
 
-## 2. Employee of a business that uses the Yume platform
+## 2. Employee of a business that uses the Parlo platform
 
 Employees interact exclusively via WhatsApp to manage their schedule and handle walk-ins.
 
 ### 2.1 Get onboarded as an employee
 | # | Requirement | UI | Status |
 |---|-------------|----|----|
-| 2.1.1 | Receive WhatsApp message from Yume with welcome and instructions | WA | [ ] |
+| 2.1.1 | Receive WhatsApp message from Parlo with welcome and instructions | WA | [ ] |
 | 2.1.2 | Confirm identity/acceptance via WhatsApp response | WA | [ ] |
-| 2.1.3 | Understand what Yume can do (brief tutorial) | WA | [ ] |
+| 2.1.3 | Understand what Parlo can do (brief tutorial) | WA | [ ] |
 
 ### 2.2 View my schedule
 | # | Requirement | UI | Status |
@@ -1975,13 +1975,13 @@ Employees interact exclusively via WhatsApp to manage their schedule and handle 
 ### 2.7 Communicate with customers
 | # | Requirement | UI | Status |
 |---|-------------|----|----|
-| 2.7.1 | Ask Yume to send message to customer | WA | [ ] |
+| 2.7.1 | Ask Parlo to send message to customer | WA | [ ] |
 | 2.7.2 | Specify customer by phone or by recent appointment | WA | [ ] |
 | 2.7.3 | Compose custom message to send | WA | [ ] |
 
 ---
 
-## 3. Client (customer) of a business that uses the Yume platform
+## 3. Client (customer) of a business that uses the Parlo platform
 
 Clients interact exclusively via WhatsApp. They have no web interface.
 
@@ -2044,7 +2044,7 @@ Clients interact exclusively via WhatsApp. They have no web interface.
 
 ---
 
-## 4. Yume admin user
+## 4. Parlo admin user
 
 Platform administrators manage all organizations and debug issues.
 
@@ -2267,7 +2267,7 @@ These requirements apply to the entire system.
 | 7.3.1 | Backend deployed and accessible on Render | [x] |
 | 7.3.2 | Frontend deployed and accessible on Render | [x] |
 | 7.3.3 | HTTPS configured | [x] |
-| 7.3.4 | Domain configured (api.yume.mx, app.yume.mx) | [ ] |
+| 7.3.4 | Domain configured (api.parlo.mx, app.parlo.mx) | [ ] |
 | 7.3.5 | Environment variables configured | [x] |
 | 7.3.6 | Celery worker running | [ ] Deferred |
 
@@ -2302,24 +2302,24 @@ When implementing a requirement:
 
 ```
 Cliente: Hola buenas tardes
-Yume: ¡Hola! Bienvenido a Barbería Don Carlos. ¿En qué puedo ayudarte?
+Parlo: ¡Hola! Bienvenido a Barbería Don Carlos. ¿En qué puedo ayudarte?
 
 Cliente: Quiero una cita para un corte
-Yume: ¡Claro! ¿Para qué día te gustaría agendar tu corte?
+Parlo: ¡Claro! ¿Para qué día te gustaría agendar tu corte?
 
 Cliente: Mañana en la tarde
-Yume: Perfecto. Mañana viernes tengo disponibles estos horarios para corte de cabello ($150):
+Parlo: Perfecto. Mañana viernes tengo disponibles estos horarios para corte de cabello ($150):
 • 3:00 PM
 • 4:00 PM  
 • 5:30 PM
 ¿Cuál te funciona mejor?
 
 Cliente: A las 4
-Yume: Listo, te agendé tu corte de cabello para mañana viernes a las 4:00 PM. 
+Parlo: Listo, te agendé tu corte de cabello para mañana viernes a las 4:00 PM. 
 ¿Me confirmas tu nombre para la cita?
 
 Cliente: Juan Pérez
-Yume: ¡Perfecto, Juan! Tu cita está confirmada:
+Parlo: ¡Perfecto, Juan! Tu cita está confirmada:
 📅 Viernes 15 de enero
 ⏰ 4:00 PM
 💇 Corte de cabello - $150
@@ -2327,38 +2327,38 @@ Yume: ¡Perfecto, Juan! Tu cita está confirmada:
 Te enviaré un recordatorio mañana. ¡Nos vemos!
 
 Cliente: Gracias
-Yume: ¡Con gusto! Que tengas buena tarde. 👋
+Parlo: ¡Con gusto! Que tengas buena tarde. 👋
 ```
 
 ### Example 2: Rescheduling
 
 ```
 Cliente: Hola, necesito cambiar mi cita de mañana
-Yume: Hola Juan, claro que sí. Veo que tienes una cita para corte mañana viernes a las 4:00 PM. ¿Para cuándo te gustaría cambiarla?
+Parlo: Hola Juan, claro que sí. Veo que tienes una cita para corte mañana viernes a las 4:00 PM. ¿Para cuándo te gustaría cambiarla?
 
 Cliente: Para el sábado si hay espacio
-Yume: El sábado tengo estos horarios disponibles:
+Parlo: El sábado tengo estos horarios disponibles:
 • 10:00 AM
 • 11:30 AM
 • 2:00 PM
 ¿Cuál prefieres?
 
 Cliente: 11:30
-Yume: Listo, cambié tu cita para el sábado a las 11:30 AM. ¿Todo bien?
+Parlo: Listo, cambié tu cita para el sábado a las 11:30 AM. ¿Todo bien?
 
 Cliente: Sí perfecto gracias
-Yume: ¡Excelente! Nos vemos el sábado, Juan. 👍
+Parlo: ¡Excelente! Nos vemos el sábado, Juan. 👍
 ```
 
 ### Example 3: Handoff
 
 ```
 Cliente: Oye quiero saber si hacen tintes para hombre
-Yume: Actualmente los servicios que tenemos son corte de cabello y arreglo de barba. Para preguntas sobre servicios adicionales, deja que le pase tu mensaje a Carlos, el dueño.
+Parlo: Actualmente los servicios que tenemos son corte de cabello y arreglo de barba. Para preguntas sobre servicios adicionales, deja que le pase tu mensaje a Carlos, el dueño.
 
 [Notificación a Carlos: "Un cliente pregunta por tintes para hombre. Teléfono: +52 55 1234 5678"]
 
-Yume: Ya le avisé a Carlos, te contactará pronto para darte más información. ¿Hay algo más en lo que pueda ayudarte?
+Parlo: Ya le avisé a Carlos, te contactará pronto para darte más información. ¿Hay algo más en lo que pueda ayudarte?
 ```
 
 ### Example 4: Staff Checking Schedule
@@ -2367,7 +2367,7 @@ Yume: Ya le avisé a Carlos, te contactará pronto para darte más información.
 [Message from registered staff phone number]
 
 Pedro (empleado): Qué tengo hoy?
-Yume: Hola Pedro, aquí está tu agenda para hoy viernes:
+Parlo: Hola Pedro, aquí está tu agenda para hoy viernes:
 
 ⏰ 10:00 AM - Corte - Juan Pérez
 ⏰ 11:00 AM - Corte y barba - Miguel Sánchez  
@@ -2380,29 +2380,29 @@ Yume: Hola Pedro, aquí está tu agenda para hoy viernes:
 Tienes 5 citas y un espacio libre a las 4.
 
 Pedro: Bloquea las 4, tengo que salir temprano
-Yume: Listo, bloqueé las 4:00 PM ✓ ¿Quieres que también bloquee de 5 en adelante?
+Parlo: Listo, bloqueé las 4:00 PM ✓ ¿Quieres que también bloquee de 5 en adelante?
 
 Pedro: No solo las 4
-Yume: Perfecto, solo las 4:00 PM bloqueadas. ¿Algo más?
+Parlo: Perfecto, solo las 4:00 PM bloqueadas. ¿Algo más?
 ```
 
 ### Example 5: Staff Handling Walk-in
 
 ```
 María (empleada): Acaba de llegar alguien para uñas
-Yume: ¿Qué servicio quiere? Tenemos:
+Parlo: ¿Qué servicio quiere? Tenemos:
 • Manicure - $200 (45 min)
 • Pedicure - $250 (1 hr)
 • Mani + Pedi - $400 (1.5 hr)
 
 María: Mani pedi
-Yume: Perfecto. ¿Tienes el teléfono de la clienta para registrarla?
+Parlo: Perfecto. ¿Tienes el teléfono de la clienta para registrarla?
 
 María: 55 9876 5432
-Yume: Registrado. ¿Nombre?
+Parlo: Registrado. ¿Nombre?
 
 María: Ana
-Yume: Listo ✓ Registré a Ana (55 9876 5432) para Mani + Pedi ahora a las 11:30 AM contigo.
+Parlo: Listo ✓ Registré a Ana (55 9876 5432) para Mani + Pedi ahora a las 11:30 AM contigo.
 
 María: 👍
 ```
@@ -2411,33 +2411,33 @@ María: 👍
 
 ```
 Carlos (dueño): El de las 3 no llegó
-Yume: ¿Te refieres a la cita de Roberto García a las 3:00 PM (Corte)?
+Parlo: ¿Te refieres a la cita de Roberto García a las 3:00 PM (Corte)?
 
 Carlos: Si
-Yume: Marqué la cita como no-show ✓ ¿Quieres que le envíe un mensaje a Roberto?
+Parlo: Marqué la cita como no-show ✓ ¿Quieres que le envíe un mensaje a Roberto?
 
 Carlos: Si, dile que esperamos que esté bien y que nos avise para reagendar
-Yume: Enviado ✓ Le mandé: "Hola Roberto, notamos que no pudiste llegar a tu cita de hoy. Esperamos que todo esté bien. Cuando gustes, escríbenos para reagendar. - Barbería Don Carlos"
+Parlo: Enviado ✓ Le mandé: "Hola Roberto, notamos que no pudiste llegar a tu cita de hoy. Esperamos que todo esté bien. Cuando gustes, escríbenos para reagendar. - Barbería Don Carlos"
 ```
 
 ### Example 7: Owner Adding Staff
 
 ```
 Carlos (dueño): Quiero agregar un nuevo empleado
-Yume: ¡Claro! Necesito algunos datos:
+Parlo: ¡Claro! Necesito algunos datos:
 1. ¿Cómo se llama?
 
 Carlos: Pedro Hernández
-Yume: 2. ¿Cuál es su número de WhatsApp?
+Parlo: 2. ¿Cuál es su número de WhatsApp?
 
 Carlos: 55 1111 2222
-Yume: 3. ¿Qué servicios va a ofrecer Pedro?
+Parlo: 3. ¿Qué servicios va a ofrecer Pedro?
 • Corte de cabello
 • Arreglo de barba
 • Corte y barba
 
 Carlos: Todos
-Yume: Perfecto. Agregué a Pedro Hernández (55 1111 2222) como empleado ✓
+Parlo: Perfecto. Agregué a Pedro Hernández (55 1111 2222) como empleado ✓
 
 Ahora Pedro puede escribirme desde su WhatsApp para:
 - Ver su agenda
@@ -2445,10 +2445,10 @@ Ahora Pedro puede escribirme desde su WhatsApp para:
 - Marcar citas completadas
 - Registrar walk-ins
 
-¿Quieres que le mande un mensaje de bienvenida explicándole cómo usar Yume?
+¿Quieres que le mande un mensaje de bienvenida explicándole cómo usar Parlo?
 
 Carlos: Si
-Yume: Enviado ✓
+Parlo: Enviado ✓
 ```
 
 ---

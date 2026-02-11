@@ -2,16 +2,16 @@
 # Deploy all services at once via Dashboard → New → Blueprint
 
 databases:
-  - name: yume-db
+  - name: parlo-db
     region: oregon
     plan: free  # Change to starter for production
-    databaseName: yume
-    user: yume
+    databaseName: parlo
+    user: parlo
 
 services:
   # FastAPI Backend
   - type: web
-    name: yume-backend
+    name: parlo-backend
     runtime: docker
     region: oregon
     plan: free  # Change to starter for production
@@ -21,7 +21,7 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: yume-db
+          name: parlo-db
           property: connectionString
       - key: REDIS_URL
         value: ""  # Not using Redis (no Celery workers)
@@ -32,7 +32,7 @@ services:
       - key: ADMIN_MASTER_PASSWORD
         sync: false  # Must set manually in dashboard
       - key: FRONTEND_URL
-        sync: false  # Set manually: https://yume-frontend.onrender.com
+        sync: false  # Set manually: https://parlo-frontend.onrender.com
       - key: TWILIO_ACCOUNT_SID
         sync: false  # Must set manually in dashboard
       - key: TWILIO_AUTH_TOKEN
@@ -44,13 +44,13 @@ services:
       - key: META_APP_SECRET
         sync: false  # Must set manually in dashboard
       - key: META_WEBHOOK_VERIFY_TOKEN
-        value: yume-webhook-token
+        value: parlo-webhook-token
       - key: META_API_VERSION
         value: v18.0
 
   # Next.js Frontend
   - type: web
-    name: yume-frontend
+    name: parlo-frontend
     runtime: node
     region: oregon
     plan: free  # Change to starter for production
@@ -59,6 +59,6 @@ services:
     startCommand: npm run start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        sync: false  # Set manually: https://yume-backend.onrender.com/api/v1
+        sync: false  # Set manually: https://parlo-backend.onrender.com/api/v1
       - key: NEXT_PUBLIC_META_APP_ID
         sync: false  # Optional: for Meta Embedded Signup

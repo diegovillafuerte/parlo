@@ -26,10 +26,10 @@ class MessageSenderType(str, Enum):
 
     END_CUSTOMER = "end_customer"
     AI = "ai"
-    YUME_USER = "yume_user"
+    PARLO_USER = "parlo_user"
     # Backwards compatibility aliases
     CUSTOMER = "end_customer"  # Deprecated, use END_CUSTOMER
-    STAFF = "yume_user"  # Deprecated, use YUME_USER
+    STAFF = "parlo_user"  # Deprecated, use PARLO_USER
 
 
 class MessageContentType(str, Enum):

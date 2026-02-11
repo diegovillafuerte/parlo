@@ -1,4 +1,4 @@
-"""FastAPI application entry point for Yume."""
+"""FastAPI application entry point for Parlo."""
 
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -17,7 +17,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan - startup and shutdown events."""
     # Startup
-    print("Starting Yume API...")
+    print("Starting Parlo API...")
     print(f"Environment: {settings.app_env}")
     print(f"Database: {settings.async_database_url.split('@')[-1]}")  # Hide credentials
 
@@ -31,13 +31,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # Shutdown
-    print("Shutting down Yume API...")
+    print("Shutting down Parlo API...")
     await engine.dispose()
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="Yume API",
+    title="Parlo API",
     description="WhatsApp-native AI scheduling assistant for beauty businesses in Mexico",
     version="0.1.0",
     lifespan=lifespan,
@@ -70,7 +70,7 @@ app.include_router(api_v1_router, prefix="/api/v1")
 async def root() -> dict[str, str]:
     """Root endpoint."""
     return {
-        "name": "Yume API",
+        "name": "Parlo API",
         "version": "0.1.0",
         "description": "WhatsApp-native AI scheduling assistant",
     }

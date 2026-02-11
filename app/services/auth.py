@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import AuthToken, Organization, YumeUser
+from app.models import AuthToken, Organization, ParloUser
 from app.utils.jwt import create_access_token
 from app.utils.phone import normalize_phone_number
 
@@ -44,10 +44,10 @@ async def get_organization_by_phone(
 
     # Search staff with owner role by phone number
     result = await db.execute(
-        select(YumeUser).where(
-            YumeUser.phone_number == phone_number,
-            YumeUser.role == "owner",
-            YumeUser.is_active == True,
+        select(ParloUser).where(
+            ParloUser.phone_number == phone_number,
+            ParloUser.role == "owner",
+            ParloUser.is_active == True,
         )
     )
     staff = result.scalar_one_or_none()

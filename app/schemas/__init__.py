@@ -1,4 +1,4 @@
-"""Pydantic schemas for Yume API."""
+"""Pydantic schemas for Parlo API."""
 
 from app.schemas.appointment import (
     AppointmentCancel,

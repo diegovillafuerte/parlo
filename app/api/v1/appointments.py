@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_organization_dependency
-from app.models import Appointment, EndCustomer, Organization, ServiceType, YumeUser
+from app.models import Appointment, EndCustomer, Organization, ServiceType, ParloUser
 from app.schemas.appointment import (
     AppointmentCancel,
     AppointmentComplete,
@@ -91,7 +91,7 @@ async def create_appointment(
 
     # Validate staff exists and belongs to org
     if appointment_data.staff_id:
-        staff = await db.get(YumeUser, appointment_data.staff_id)
+        staff = await db.get(ParloUser, appointment_data.staff_id)
         if not staff or staff.organization_id != org.id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

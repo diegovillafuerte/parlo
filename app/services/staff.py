@@ -7,26 +7,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Organization, ServiceType, YumeUser
+from app.models import Organization, ServiceType, ParloUser
 from app.schemas.staff import StaffCreate, StaffUpdate
 
 
-async def get_staff(db: AsyncSession, staff_id: UUID) -> YumeUser | None:
+async def get_staff(db: AsyncSession, staff_id: UUID) -> ParloUser | None:
     """Get staff member by ID with service types loaded."""
     result = await db.execute(
-        select(YumeUser)
-        .where(YumeUser.id == staff_id)
-        .options(selectinload(YumeUser.service_types))
+        select(ParloUser)
+        .where(ParloUser.id == staff_id)
+        .options(selectinload(ParloUser.service_types))
     )
     return result.scalar_one_or_none()
 
 
 async def get_all_staff_registrations(
     db: AsyncSession, phone_number: str
-) -> list[tuple[YumeUser, Organization]]:
+) -> list[tuple[ParloUser, Organization]]:
     """Get ALL active staff registrations for a phone number across all organizations.
 
-    This is critical for the routing decision when someone messages Yume's central number.
+    This is critical for the routing decision when someone messages Parlo's central number.
     A person can be staff at multiple businesses (e.g., works at two salons).
 
     Args:
@@ -34,21 +34,21 @@ async def get_all_staff_registrations(
         phone_number: Phone number to look up
 
     Returns:
-        List of (YumeUser, Organization) tuples for all businesses where this phone is registered
+        List of (ParloUser, Organization) tuples for all businesses where this phone is registered
     """
     result = await db.execute(
-        select(YumeUser, Organization)
-        .join(Organization, YumeUser.organization_id == Organization.id)
+        select(ParloUser, Organization)
+        .join(Organization, ParloUser.organization_id == Organization.id)
         .where(
-            YumeUser.phone_number == phone_number,
-            YumeUser.is_active == True,
+            ParloUser.phone_number == phone_number,
+            ParloUser.is_active == True,
         )
-        .options(selectinload(YumeUser.service_types))
+        .options(selectinload(ParloUser.service_types))
     )
     return list(result.all())
 
 
-async def mark_first_message(db: AsyncSession, staff: YumeUser) -> YumeUser:
+async def mark_first_message(db: AsyncSession, staff: ParloUser) -> ParloUser:
     """Mark that this staff member has sent their first WhatsApp message.
 
     Called when a pre-registered staff member messages for the first time.
@@ -67,7 +67,7 @@ async def mark_first_message(db: AsyncSession, staff: YumeUser) -> YumeUser:
     return staff
 
 
-def is_first_message(staff: YumeUser) -> bool:
+def is_first_message(staff: ParloUser) -> bool:
     """Check if this would be the staff member's first WhatsApp message.
 
     Used to determine if we should route to staff onboarding flow.
@@ -83,17 +83,17 @@ def is_first_message(staff: YumeUser) -> bool:
 
 async def get_staff_by_phone(
     db: AsyncSession, organization_id: UUID, phone_number: str
-) -> YumeUser | None:
+) -> ParloUser | None:
     """Get staff member by phone number within an organization.
 
     This is THE key function for staff identification in message routing.
     When a message arrives, we check if the sender is a registered staff member.
     """
     result = await db.execute(
-        select(YumeUser).where(
-            YumeUser.organization_id == organization_id,
-            YumeUser.phone_number == phone_number,
-            YumeUser.is_active == True,
+        select(ParloUser).where(
+            ParloUser.organization_id == organization_id,
+            ParloUser.phone_number == phone_number,
+            ParloUser.is_active == True,
         )
     )
     return result.scalar_one_or_none()
@@ -101,21 +101,21 @@ async def get_staff_by_phone(
 
 async def list_staff(
     db: AsyncSession, organization_id: UUID, location_id: UUID | None = None
-) -> list[YumeUser]:
+) -> list[ParloUser]:
     """List all staff members for an organization with service types loaded."""
-    query = select(YumeUser).where(YumeUser.organization_id == organization_id)
+    query = select(ParloUser).where(ParloUser.organization_id == organization_id)
     if location_id:
-        query = query.where(YumeUser.location_id == location_id)
-    query = query.options(selectinload(YumeUser.service_types))
-    result = await db.execute(query.order_by(YumeUser.name))
+        query = query.where(ParloUser.location_id == location_id)
+    query = query.options(selectinload(ParloUser.service_types))
+    result = await db.execute(query.order_by(ParloUser.name))
     return list(result.scalars().all())
 
 
 async def create_staff(
     db: AsyncSession, organization_id: UUID, staff_data: StaffCreate
-) -> YumeUser:
+) -> ParloUser:
     """Create a new staff member."""
-    staff = YumeUser(
+    staff = ParloUser(
         organization_id=organization_id,
         location_id=staff_data.location_id,
         name=staff_data.name,
@@ -132,8 +132,8 @@ async def create_staff(
 
 
 async def update_staff(
-    db: AsyncSession, staff: YumeUser, staff_data: StaffUpdate
-) -> YumeUser:
+    db: AsyncSession, staff: ParloUser, staff_data: StaffUpdate
+) -> ParloUser:
     """Update a staff member."""
     update_dict = staff_data.model_dump(exclude_unset=True)
     for key, value in update_dict.items():
@@ -143,15 +143,15 @@ async def update_staff(
     return staff
 
 
-async def delete_staff(db: AsyncSession, staff: YumeUser) -> None:
+async def delete_staff(db: AsyncSession, staff: ParloUser) -> None:
     """Delete a staff member (soft delete by setting is_active=False)."""
     staff.is_active = False
     await db.flush()
 
 
 async def update_staff_services(
-    db: AsyncSession, staff: YumeUser, service_type_ids: list[UUID]
-) -> YumeUser:
+    db: AsyncSession, staff: ParloUser, service_type_ids: list[UUID]
+) -> ParloUser:
     """Update the services that this staff member can perform."""
     # Fetch the service types by their IDs
     if service_type_ids:

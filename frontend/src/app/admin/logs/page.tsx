@@ -28,7 +28,7 @@ const TRACE_TYPE_COLORS: Record<string, string> = {
 
 const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   route_message: 'Route incoming WhatsApp message',
-  _route_central_number_message: 'Route to Yume central number',
+  _route_central_number_message: 'Route to Parlo central number',
   _route_business_number_message: 'Route to business number',
   _handle_business_onboarding: 'Start business onboarding flow',
   _handle_staff_onboarding: 'Start staff onboarding flow',

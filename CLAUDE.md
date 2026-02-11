@@ -1,10 +1,10 @@
-# CLAUDE.md - Yume Development Guide
+# CLAUDE.md - Parlo Development Guide
 
-## What is Yume?
+## What is Parlo?
 
-Yume is a WhatsApp-native AI scheduling assistant for beauty businesses in Mexico. Business owners connect their WhatsApp number, and Yume handles booking conversations automatically via AI.
+Parlo is a WhatsApp-native AI scheduling assistant for beauty businesses in Mexico. Business owners connect their WhatsApp number, and Parlo handles booking conversations automatically via AI.
 
-**One-liner:** "Connect Yume to your WhatsApp in 2 minutes. Watch your appointments start booking themselves."
+**One-liner:** "Connect Parlo to your WhatsApp in 2 minutes. Watch your appointments start booking themselves."
 
 **Full specification:** See `docs/PROJECT_SPEC.md` for detailed requirements, user journeys, and example conversations.
 
@@ -46,7 +46,7 @@ ngrok http 8000                   # For Twilio webhooks
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                         WHATSAPP CHANNELS (Twilio)                        │
 ├────────────────────────────────┬─────────────────────────────────────────┤
-│   YUME CENTRAL NUMBER          │      BUSINESS NUMBERS (per business)    │
+│   PARLO CENTRAL NUMBER          │      BUSINESS NUMBERS (per business)    │
 │   - Business onboarding        │      - End customer bookings            │
 │   - Business management        │      - Staff management                 │
 └────────────────────────────────┴─────────────────────────────────────────┘
@@ -66,7 +66,7 @@ ngrok http 8000                   # For Twilio webhooks
 ```
 
 **Three interfaces:**
-1. **WhatsApp** - Two channels: Yume Central (B2B) + Business Numbers (B2C/Staff)
+1. **WhatsApp** - Two channels: Parlo Central (B2B) + Business Numbers (B2C/Staff)
 2. **Web Dashboard** - Business owners manage everything (magic link auth)
 3. **Admin Dashboard** - Platform management (password auth)
 
@@ -88,7 +88,7 @@ ngrok http 8000                   # For Twilio webhooks
 ## Project Structure
 
 ```
-yume/
+parlo/
 ├── app/                         # Backend
 │   ├── main.py                  # FastAPI entry
 │   ├── config.py                # Settings
@@ -115,7 +115,7 @@ yume/
 | Organization | The business (also stores onboarding state directly) |
 | Location | Physical location (1+ per org) |
 | Spot | Service station (chair, table) - linked to services |
-| YumeUser (Staff) | Employees identified by phone (alias: Staff) |
+| ParloUser (Staff) | Employees identified by phone (alias: Staff) |
 | ServiceType | What they offer |
 | EndCustomer (Customer) | End consumer (incremental identity, alias: Customer) |
 | Appointment | Scheduled event |
@@ -137,13 +137,13 @@ yume/
 
 **⚠️ IMPORTANT: See `docs/PROJECT_SPEC.md` for the complete routing specification (including state machines and permissions).**
 
-Yume operates two WhatsApp channels:
-- **Yume Central Number** - B2B: business onboarding + management
+Parlo operates two WhatsApp channels:
+- **Parlo Central Number** - B2B: business onboarding + management
 - **Business Numbers** - B2C: end customers + staff of that specific business
 
 ```python
 # Simplified routing logic (see full spec for all cases)
-if recipient_number == YUME_CENTRAL_NUMBER:
+if recipient_number == PARLO_CENTRAL_NUMBER:
     registrations = await get_staff_registrations(sender_phone)
     if len(registrations) == 0:
         return handle_business_onboarding(sender_phone, message)
@@ -164,9 +164,9 @@ else:
 **Key routing cases:**
 | Case | Recipient | Sender | Route |
 |------|-----------|--------|-------|
-| 1 | Yume Central | Unknown | Business Onboarding |
-| 2a | Yume Central | Staff of 1 business | Business Management |
-| 2b | Yume Central | Staff of 2+ businesses | Redirect |
+| 1 | Parlo Central | Unknown | Business Onboarding |
+| 2a | Parlo Central | Staff of 1 business | Business Management |
+| 2b | Parlo Central | Staff of 2+ businesses | Redirect |
 | 3 | Business Number | New staff | Staff Onboarding |
 | 4 | Business Number | Known staff | Business Management |
 | 5 | Business Number | Anyone else | End Customer |
@@ -192,7 +192,7 @@ Check message_id before processing to handle duplicate deliveries.
 Backend `.env`:
 ```bash
 APP_ENV=development  # development, staging, production
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/yume
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/parlo
 REDIS_URL=redis://localhost:6379/0
 OPENAI_API_KEY=sk-...
 TWILIO_ACCOUNT_SID=...
@@ -206,7 +206,7 @@ ADMIN_MASTER_PASSWORD=change-in-production
 Frontend `.env.local`:
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_YUME_WHATSAPP_NUMBER=17759674528
+NEXT_PUBLIC_PARLO_WHATSAPP_NUMBER=17759674528
 ```
 
 ## Current Implementation Status
@@ -239,7 +239,7 @@ NEXT_PUBLIC_YUME_WHATSAPP_NUMBER=17759674528
 
 ### Not Implemented
 - Create/Edit appointment modals in dashboard (deferred — most bookings via WhatsApp)
-- Custom domain configuration (api.yume.mx, app.yume.mx)
+- Custom domain configuration (api.parlo.mx, app.parlo.mx)
 - Customer management page in frontend (API exists, no UI)
 - Availability management UI in frontend (API exists, no UI)
 - AI error recovery (no retry logic for OpenAI API failures)
@@ -296,7 +296,7 @@ All UI testing should be done **directly in production** via Playwright MCP, not
 ### Mandatory Steps
 1. **After completing any UI change**, deploy and use Playwright MCP to verify on production:
    ```
-   - Navigate to https://yume-frontend.onrender.com/admin (or relevant page)
+   - Navigate to https://parlo-frontend.onrender.com/admin (or relevant page)
    - Take a screenshot
    - Analyze: Does it match the intended design? Are there errors?
    ```
@@ -315,16 +315,16 @@ All UI testing should be done **directly in production** via Playwright MCP, not
 ### Example Verification Commands
 ```
 Use Playwright to:
-1. Navigate to https://yume-frontend.onrender.com/admin
+1. Navigate to https://parlo-frontend.onrender.com/admin
 2. Take a screenshot
 3. Click the "Organizations" tab and screenshot
 4. Verify the table loads with data
 ```
 
 ### Production URLs for Testing
-- Admin Dashboard: `https://yume-frontend.onrender.com/admin`
-- Business Login: `https://yume-frontend.onrender.com/login`
-- Business Dashboard: `https://yume-frontend.onrender.com/schedule`
+- Admin Dashboard: `https://parlo-frontend.onrender.com/admin`
+- Business Login: `https://parlo-frontend.onrender.com/login`
+- Business Dashboard: `https://parlo-frontend.onrender.com/schedule`
 
 ### What NOT to do
 - Never say "done" without visual verification on production
@@ -367,9 +367,9 @@ For debugging sessions, summarize findings with:
 **Deployed on Render (migrated from Railway on 2026-02-01)**
 
 ### Infrastructure
-- **Backend**: Web Service (Docker) - `yume-backend`
-- **Frontend**: Web Service (Node) - `yume-frontend`
-- **Database**: Render PostgreSQL - `yume-db`
+- **Backend**: Web Service (Docker) - `parlo-backend`
+- **Frontend**: Web Service (Node) - `parlo-frontend`
+- **Database**: Render PostgreSQL - `parlo-db`
 - **Redis**: Not deployed (Celery workers deferred to save costs)
 
 ### Configuration File
@@ -401,19 +401,19 @@ REDIS_URL=""                         # Empty - not using Redis
 OPENAI_API_KEY=sk-...               # Set manually in dashboard
 JWT_SECRET_KEY=<auto-generated>
 ADMIN_MASTER_PASSWORD=<set manually>
-FRONTEND_URL=https://yume-frontend.onrender.com
+FRONTEND_URL=https://parlo-frontend.onrender.com
 APP_ENV=production
 ```
 
 ### Environment Variables (Frontend)
 ```
-NEXT_PUBLIC_API_URL=https://yume-backend.onrender.com/api/v1
+NEXT_PUBLIC_API_URL=https://parlo-backend.onrender.com/api/v1
 ```
 
 ### Render URLs
-- Backend: `https://yume-backend-8b6h.onrender.com`
-- Frontend: `https://yume-frontend.onrender.com`
-- Admin Dashboard: `https://yume-frontend.onrender.com/admin`
+- Backend: `https://parlo-backend-8b6h.onrender.com`
+- Frontend: `https://parlo-frontend.onrender.com`
+- Admin Dashboard: `https://parlo-frontend.onrender.com/admin`
 
 ### Render CLI
 - Load RENDER_API_KEY from .env before running render commands: `export $(grep RENDER_API_KEY .env | xargs)`

@@ -31,14 +31,14 @@ spot_service_types = Table(
     ),
 )
 
-# Association table: which services each yume_user can perform
-yume_user_service_types = Table(
-    "yume_user_service_types",
+# Association table: which services each parlo_user can perform
+parlo_user_service_types = Table(
+    "parlo_user_service_types",
     Base.metadata,
     Column(
-        "yume_user_id",
+        "parlo_user_id",
         UUID(as_uuid=True),
-        ForeignKey("yume_users.id", ondelete="CASCADE"),
+        ForeignKey("parlo_users.id", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(

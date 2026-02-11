@@ -4,9 +4,9 @@ This service handles provisioning dedicated WhatsApp numbers for businesses
 using Twilio's WhatsApp Senders API (v2).
 
 Flow:
-1. Business completes onboarding via Yume's main number
+1. Business completes onboarding via Parlo's main number
 2. We purchase a phone number from Twilio
-3. Register it as a WhatsApp sender under Yume's WABA
+3. Register it as a WhatsApp sender under Parlo's WABA
 4. Wait for sender status to become ONLINE (async via webhook)
 5. (Future) Option to migrate their existing number
 """
@@ -144,7 +144,7 @@ class TwilioProvisioningService:
         business_name: str,
         status_callback_url: str | None = None,
     ) -> dict[str, Any] | None:
-        """Register a phone number as WhatsApp sender under Yume's WABA.
+        """Register a phone number as WhatsApp sender under Parlo's WABA.
 
         Uses Twilio's Senders API (v2) to register the number for WhatsApp.
 
@@ -345,12 +345,12 @@ async def provision_number_for_business(
     This is a convenience function that:
     1. Lists available numbers
     2. Purchases the first available one
-    3. Registers it as a WhatsApp sender under Yume's WABA
+    3. Registers it as a WhatsApp sender under Parlo's WABA
     4. If sender registration fails, releases the purchased number (rollback)
 
     Args:
         business_name: Name of the business (for friendly name and WhatsApp profile)
-        webhook_base_url: Base URL for webhooks (e.g., https://api.yume.mx)
+        webhook_base_url: Base URL for webhooks (e.g., https://api.parlo.mx)
         country_code: Country code for the number
 
     Returns:
@@ -374,7 +374,7 @@ async def provision_number_for_business(
         number_to_buy = available[0]["phone_number"]
         purchased = await service.purchase_number(
             phone_number=number_to_buy,
-            friendly_name=f"Yume - {business_name}",
+            friendly_name=f"Parlo - {business_name}",
             webhook_url=f"{webhook_base_url}/api/v1/webhooks/whatsapp",
         )
 

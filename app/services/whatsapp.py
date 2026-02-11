@@ -78,7 +78,7 @@ class WhatsAppClient:
         return await self._send_via_twilio(to=to, message=message)
 
     async def _send_via_twilio(self, to: str, message: str) -> dict[str, Any]:
-        """Send message via Twilio API (Yume's main number).
+        """Send message via Twilio API (Parlo's main number).
 
         Args:
             to: Recipient's phone number

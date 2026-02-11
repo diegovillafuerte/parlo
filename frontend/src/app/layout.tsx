@@ -7,7 +7,7 @@ import { AuthProvider } from "@/providers/AuthProvider";
 import { LocationProvider } from "@/providers/LocationProvider";
 
 export const metadata: Metadata = {
-  title: "Yume - Gestión de Citas",
+  title: "Parlo - Gestión de Citas",
   description: "Tu asistente de citas para negocios de belleza",
 };
 

@@ -238,7 +238,7 @@ class TestProvisionTwilioNumberTool:
             mock_provision.return_value = {
                 "phone_number": "+525588887777",
                 "phone_number_sid": "PN_TEST_001",
-                "friendly_name": "Yume - Barbería Don Juan",
+                "friendly_name": "Parlo - Barbería Don Juan",
             }
 
             result = await handler._execute_tool(

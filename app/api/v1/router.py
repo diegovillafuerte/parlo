@@ -35,4 +35,4 @@ router.include_router(webhooks.router)
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
-    return {"status": "ok", "message": "Yume API is running"}
+    return {"status": "ok", "message": "Parlo API is running"}

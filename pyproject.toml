@@ -1,5 +1,5 @@
 [project]
-name = "yume"
+name = "parlo"
 version = "0.1.0"
 description = "WhatsApp-native AI scheduling assistant for beauty businesses in Mexico"
 readme = "README.md"

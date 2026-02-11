@@ -14,16 +14,16 @@ from app.models import (
     Organization,
     OrganizationStatus,
     Location,
-    YumeUser,
-    YumeUserRole,
-    YumeUserPermissionLevel,
+    ParloUser,
+    ParloUserRole,
+    ParloUserPermissionLevel,
     EndCustomer,
 )
 from app.services.onboarding import OnboardingState
 
 # Aliases for readability
-Staff = YumeUser
-StaffRole = YumeUserRole
+Staff = ParloUser
+StaffRole = ParloUserRole
 from app.services.message_router import MessageRouter
 
 
@@ -36,16 +36,16 @@ class TestMessageRouterCase1:
     async def test_routes_unknown_sender_to_onboarding(
         self, db, mock_whatsapp_client
     ):
-        """Unknown phone number on Yume Central routes to onboarding flow."""
+        """Unknown phone number on Parlo Central routes to onboarding flow."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
         with patch.object(
             router, "_handle_business_onboarding", new_callable=AsyncMock
         ) as mock_handler:
-            mock_handler.return_value = "¡Hola! Soy Yume..."
+            mock_handler.return_value = "¡Hola! Soy Parlo..."
 
             result = await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",  # Not a business number
+                phone_number_id="PARLO_CENTRAL_ID",  # Not a business number
                 sender_phone="+525551234567",  # Unknown sender
                 message_id="test_msg_001",
                 message_content="Hola, quiero registrar mi negocio",
@@ -67,10 +67,10 @@ class TestMessageRouterCase1:
             "app.services.onboarding.OnboardingHandler.handle_message",
             new_callable=AsyncMock,
         ) as mock_handle:
-            mock_handle.return_value = "¡Hola! Bienvenido a Yume..."
+            mock_handle.return_value = "¡Hola! Bienvenido a Parlo..."
 
             await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",
+                phone_number_id="PARLO_CENTRAL_ID",
                 sender_phone="+525559999888",
                 message_id="test_msg_002",
                 message_content="Hola",
@@ -114,7 +114,7 @@ class TestMessageRouterCase1:
             mock_handle.return_value = "Perfecto, ¿qué servicios ofreces?"
 
             result = await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",
+                phone_number_id="PARLO_CENTRAL_ID",
                 sender_phone=org.phone_number,
                 message_id="test_msg_003",
                 message_content="Corte de cabello $150",
@@ -212,16 +212,16 @@ class TestMessageRouterBusinessNumberRouting:
             assert result["sender_type"] == "staff"
             mock_handler.assert_called_once()
 
-    async def test_unknown_number_routes_to_yume_central(
+    async def test_unknown_number_routes_to_parlo_central(
         self, db, mock_whatsapp_client
     ):
-        """Message to unknown number (Yume Central) triggers onboarding."""
+        """Message to unknown number (Parlo Central) triggers onboarding."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
         with patch.object(
             router, "_handle_business_onboarding", new_callable=AsyncMock
         ) as mock_handler:
-            mock_handler.return_value = "¡Hola! Soy Yume..."
+            mock_handler.return_value = "¡Hola! Soy Parlo..."
 
             result = await router.route_message(
                 phone_number_id="UNKNOWN_NUMBER_ID",  # Not in database
@@ -252,7 +252,7 @@ class TestMessageRouterDeduplication:
             mock_handler.return_value = "¡Hola!"
 
             result1 = await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",
+                phone_number_id="PARLO_CENTRAL_ID",
                 sender_phone="+525533334444",
                 message_id="duplicate_msg_id",
                 message_content="Hola",
@@ -264,7 +264,7 @@ class TestMessageRouterDeduplication:
 
         # Same message_id again
         result2 = await router.route_message(
-            phone_number_id="YUME_CENTRAL_ID",
+            phone_number_id="PARLO_CENTRAL_ID",
             sender_phone="+525533334444",
             message_id="duplicate_msg_id",  # Same ID
             message_content="Hola",
@@ -285,19 +285,19 @@ class TestMessageRouterWhatsAppResponse:
         with patch.object(
             router, "_handle_business_onboarding", new_callable=AsyncMock
         ) as mock_handler:
-            mock_handler.return_value = "¡Hola! Soy Yume..."
+            mock_handler.return_value = "¡Hola! Soy Parlo..."
 
             await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",
+                phone_number_id="PARLO_CENTRAL_ID",
                 sender_phone="+525544445555",
                 message_id="test_msg_008",
                 message_content="Hola",
             )
 
             mock_whatsapp_client.send_text_message.assert_called_once_with(
-                phone_number_id="YUME_CENTRAL_ID",
+                phone_number_id="PARLO_CENTRAL_ID",
                 to="+525544445555",
-                message="¡Hola! Soy Yume...",
+                message="¡Hola! Soy Parlo...",
             )
 
 
@@ -342,7 +342,7 @@ class TestMessageRouterCompletedOnboarding:
             name="Owner",
             phone_number="+525577778888",
             role=StaffRole.OWNER.value,
-            permission_level=YumeUserPermissionLevel.OWNER.value,
+            permission_level=ParloUserPermissionLevel.OWNER.value,
             is_active=True,
             first_message_at=datetime.now(timezone.utc),
         )
@@ -358,7 +358,7 @@ class TestMessageRouterCompletedOnboarding:
             mock_handler.return_value = "Tu agenda de hoy..."
 
             result = await router.route_message(
-                phone_number_id="YUME_CENTRAL_ID",
+                phone_number_id="PARLO_CENTRAL_ID",
                 sender_phone="+525577778888",
                 message_id="test_msg_010",
                 message_content="Mi agenda",

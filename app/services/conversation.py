@@ -298,7 +298,7 @@ class ConversationHandler(ToolCallingMixin):
         if user_type == "staff":
             return (
                 f"Hola {name or 'equipo'}! 👋\n\n"
-                f"Soy Yume, tu asistente de {self.org.name}.\n\n"
+                f"Soy Parlo, tu asistente de {self.org.name}.\n\n"
                 f"El sistema de IA está siendo configurado. "
                 f"Pronto podrás:\n"
                 f"• Ver tu agenda\n"
@@ -310,7 +310,7 @@ class ConversationHandler(ToolCallingMixin):
         else:
             return (
                 f"¡Hola! 👋\n\n"
-                f"Bienvenido a {self.org.name}. Soy Yume, tu asistente virtual.\n\n"
+                f"Bienvenido a {self.org.name}. Soy Parlo, tu asistente virtual.\n\n"
                 f"El sistema está siendo configurado. "
                 f"Pronto podrás:\n"
                 f"• Agendar citas\n"

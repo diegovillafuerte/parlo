@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e  # Exit on error
 
-echo "=== Starting Yume Backend ==="
+echo "=== Starting Parlo Backend ==="
 echo "Environment: ${APP_ENV:-development}"
 echo "PORT: ${PORT:-8000}"
 

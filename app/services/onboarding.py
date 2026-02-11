@@ -1,7 +1,7 @@
 """Onboarding service - handles business registration via WhatsApp conversation.
 
 This service manages the conversational onboarding flow where a business owner
-can set up their Yume account by chatting with the AI assistant.
+can set up their Parlo account by chatting with the AI assistant.
 
 Architecture (as of Feb 2026):
 - Organization is created immediately on first message with status=ONBOARDING
@@ -11,7 +11,7 @@ Architecture (as of Feb 2026):
 - When complete, Organization.status changes to ACTIVE
 
 Flow:
-1. User texts Yume's main number
+1. User texts Parlo's main number
 2. System detects they're not associated with any organization
 3. Organization created with status=ONBOARDING, owner Staff created immediately
 4. Onboarding flow begins, collecting:
@@ -49,7 +49,7 @@ from app.models import (
     Spot,
     Staff,
     StaffRole,
-    YumeUserPermissionLevel,
+    ParloUserPermissionLevel,
 )
 
 logger = logging.getLogger(__name__)
@@ -222,7 +222,7 @@ ONBOARDING_TOOLS = [
     },
     {
         "name": "provision_twilio_number",
-        "description": "Provisiona un nuevo número de WhatsApp dedicado para el negocio usando Twilio. Úsalo cuando el usuario NO tiene una cuenta de WhatsApp Business existente y quiere que Yume le proporcione un número dedicado.",
+        "description": "Provisiona un nuevo número de WhatsApp dedicado para el negocio usando Twilio. Úsalo cuando el usuario NO tiene una cuenta de WhatsApp Business existente y quiere que Parlo le proporcione un número dedicado.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -301,7 +301,7 @@ def build_onboarding_system_prompt(org: Organization) -> str:
     else:
         current_step = "Paso 3: Confirmar datos y activar cuenta"
 
-    return f"""Eres Yume, una asistente de inteligencia artificial que ayuda a negocios de belleza en México a automatizar sus citas por WhatsApp.
+    return f"""Eres Parlo, una asistente de inteligencia artificial que ayuda a negocios de belleza en México a automatizar sus citas por WhatsApp.
 
 ## IMPORTANTE: Primera Interacción
 {"ESTA ES LA PRIMERA INTERACCIÓN. Debes presentarte con el mensaje de bienvenida completo." if is_first_message else "Ya te presentaste. Continúa con el flujo de registro."}
@@ -309,7 +309,7 @@ def build_onboarding_system_prompt(org: Organization) -> str:
 ## Mensaje de Bienvenida (SOLO primera interacción)
 Si es la primera interacción, responde EXACTAMENTE así:
 
-"¡Hola! 👋 Soy Yume, tu asistente para agendar citas automáticamente.
+"¡Hola! 👋 Soy Parlo, tu asistente para agendar citas automáticamente.
 
 Ayudo a negocios de belleza a que sus clientes agenden por WhatsApp sin que tengas que contestar cada mensaje.
 
@@ -362,7 +362,7 @@ En 2-3 minutos configuramos tu cuenta:
 ### Paso 5: Número de WhatsApp
 Cuando el usuario termine de agregar servicios:
 - Usa `provision_twilio_number` para obtener un número de WhatsApp dedicado para el negocio
-- Yume le asignará un número de México para que sus clientes puedan agendar citas
+- Parlo le asignará un número de México para que sus clientes puedan agendar citas
 
 ### Paso 6: Confirmación y Activación
 - Muestra un resumen de todo lo configurado
@@ -501,7 +501,7 @@ class OnboardingHandler(ToolCallingMixin):
             name=sender_name or "Dueño",
             phone_number=phone_number,
             role=StaffRole.OWNER.value,
-            permission_level=YumeUserPermissionLevel.OWNER.value,
+            permission_level=ParloUserPermissionLevel.OWNER.value,
             is_active=True,
             permissions={"can_manage_all": True},
         )
@@ -1206,7 +1206,7 @@ class OnboardingHandler(ToolCallingMixin):
             Fallback message
         """
         return (
-            "¡Hola! Soy Yume, tu asistente para agendar citas.\n\n"
+            "¡Hola! Soy Parlo, tu asistente para agendar citas.\n\n"
             "El sistema está siendo configurado. "
             "Por favor intenta más tarde.\n\n"
             "Si necesitas ayuda urgente, contacta a soporte."

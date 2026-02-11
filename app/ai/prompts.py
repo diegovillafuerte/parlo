@@ -1,4 +1,4 @@
-"""System prompts for Yume AI conversations.
+"""System prompts for Parlo AI conversations.
 
 All prompts are in Mexican Spanish, using natural "tú" form.
 """
@@ -6,7 +6,7 @@ All prompts are in Mexican Spanish, using natural "tú" form.
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.models import EndCustomer, Organization, ServiceType, YumeUser
+from app.models import EndCustomer, Organization, ServiceType, ParloUser
 
 
 def format_services(services: list[ServiceType]) -> str:
@@ -62,7 +62,7 @@ def format_previous_appointments(appointments: list[Any]) -> str:
     return f"{count} citas anteriores"
 
 
-def format_staff_permissions(staff: YumeUser) -> str:
+def format_staff_permissions(staff: ParloUser) -> str:
     """Format staff permissions for prompt based on permission level.
 
     Args:
@@ -126,7 +126,7 @@ def build_customer_system_prompt(
     staff_info = ""
     # Note: Staff info should be loaded and passed here if we want to show it
 
-    return f"""Eres Yume, la asistente virtual de {org.name}. Tu trabajo es ayudar a los clientes a agendar citas de manera rápida y amable.
+    return f"""Eres Parlo, la asistente virtual de {org.name}. Tu trabajo es ayudar a los clientes a agendar citas de manera rápida y amable.
 
 ## Fecha y Hora Actual
 {time_str} (Zona horaria: {org.timezone})
@@ -224,7 +224,7 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 
 def build_staff_system_prompt(
     org: Organization,
-    staff: YumeUser,
+    staff: ParloUser,
     services: list[ServiceType],
     current_time: datetime | None = None,
 ) -> str:
@@ -246,7 +246,7 @@ def build_staff_system_prompt(
 
     role_display = "dueño" if staff.role == "owner" else "empleado"
 
-    return f"""Eres Yume, la asistente virtual de {org.name}. Estás hablando con {staff.name}, {role_display} del negocio.
+    return f"""Eres Parlo, la asistente virtual de {org.name}. Estás hablando con {staff.name}, {role_display} del negocio.
 
 ## Fecha y Hora Actual
 {time_str} (Zona horaria: {org.timezone})

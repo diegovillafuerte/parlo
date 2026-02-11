@@ -14,15 +14,15 @@ from sqlalchemy import select
 from app.models import (
     Organization,
     OrganizationStatus,
-    YumeUser,
-    YumeUserRole,
+    ParloUser,
+    ParloUserRole,
     ServiceType,
     Location,
 )
 
 # Aliases for readability
-Staff = YumeUser
-StaffRole = YumeUserRole
+Staff = ParloUser
+StaffRole = ParloUserRole
 from app.services.message_router import MessageRouter
 from app.services.onboarding import OnboardingHandler, OnboardingState
 
@@ -45,7 +45,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
     ):
         """
         Full flow:
-        1. User texts Yume Central: "Hola"
+        1. User texts Parlo Central: "Hola"
         2. Onboarding conversation collects business info + services
         3. User chooses Twilio provisioning
         4. Number provisioned (mocked Twilio API)
@@ -96,7 +96,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
             mock_provision.return_value = {
                 "phone_number": "+525588887777",
                 "phone_number_sid": "PN_ROBERTO_001",
-                "friendly_name": "Yume - Barbería El Patrón",
+                "friendly_name": "Parlo - Barbería El Patrón",
             }
 
             result = await handler._execute_tool(
@@ -170,7 +170,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
         """First message creates Organization with ONBOARDING status."""
         handler = OnboardingHandler(db=db)
 
-        # New user messages Yume
+        # New user messages Parlo
         org = await handler.get_or_create_organization(
             phone_number="+525577778888",
             sender_name="Test User",

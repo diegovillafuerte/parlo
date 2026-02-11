@@ -93,7 +93,7 @@ def build_flow_aware_system_prompt(
     # Returning customer context
     returning_customer_note = ""
     if cross_business_info and cross_business_info.get("total_appointments", 0) > 0:
-        returning_customer_note = "\n⭐ Este es un cliente que ya ha usado Yume antes. Trátalo con familiaridad."
+        returning_customer_note = "\n⭐ Este es un cliente que ya ha usado Parlo antes. Trátalo con familiaridad."
 
     # Name confirmation context
     name_note = ""
@@ -105,7 +105,7 @@ def build_flow_aware_system_prompt(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    base_prompt = f"""Eres Yume, asistente virtual de {org.name}. Ayudas a clientes a agendar citas.
+    base_prompt = f"""Eres Parlo, asistente virtual de {org.name}. Ayudas a clientes a agendar citas.
 
 ## Información del Negocio
 - Nombre: {org.name}

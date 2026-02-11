@@ -40,7 +40,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Header */}
       <header className="bg-gray-900 text-white">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold">Yume Admin</h1>
+          <h1 className="text-xl font-bold">Parlo Admin</h1>
           <button
             onClick={logout}
             className="text-sm text-gray-300 hover:text-white transition-colors"

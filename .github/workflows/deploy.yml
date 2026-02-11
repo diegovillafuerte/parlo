@@ -15,7 +15,7 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: yume_test
+          POSTGRES_DB: parlo_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -48,7 +48,7 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/yume_test
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/parlo_test
           REDIS_URL: redis://localhost:6379/0
           OPENAI_API_KEY: test-key
           JWT_SECRET_KEY: test-secret
@@ -88,6 +88,6 @@ jobs:
       - name: Deploy notification
         run: |
           echo "Render auto-deploys on git push to main"
-          echo "Backend: https://yume-backend.onrender.com"
-          echo "Frontend: https://yume-frontend.onrender.com"
+          echo "Backend: https://parlo-backend.onrender.com"
+          echo "Frontend: https://parlo-frontend.onrender.com"
           echo "Configure deploy hooks in Render dashboard for manual triggers"

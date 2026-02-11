@@ -1,4 +1,4 @@
-"""add first_message_at and permission_level to yume_users
+"""add first_message_at and permission_level to parlo_users
 
 Revision ID: d4e5f6a7b8c9
 Revises: c3d4e5f6a7b8
@@ -25,19 +25,19 @@ def upgrade() -> None:
     """Add first_message_at and permission_level columns."""
     # Add first_message_at column (nullable, NULL means never messaged)
     op.add_column(
-        'yume_users',
+        'parlo_users',
         sa.Column('first_message_at', sa.DateTime(timezone=True), nullable=True)
     )
 
     # Add permission_level column with default 'staff'
     op.add_column(
-        'yume_users',
+        'parlo_users',
         sa.Column('permission_level', sa.String(20), nullable=False, server_default='staff')
     )
 
     # Set permission_level='owner' for users with role='owner'
     op.execute("""
-        UPDATE yume_users
+        UPDATE parlo_users
         SET permission_level = 'owner'
         WHERE role = 'owner'
     """)
@@ -45,5 +45,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove first_message_at and permission_level columns."""
-    op.drop_column('yume_users', 'permission_level')
-    op.drop_column('yume_users', 'first_message_at')
+    op.drop_column('parlo_users', 'permission_level')
+    op.drop_column('parlo_users', 'first_message_at')

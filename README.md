@@ -1,12 +1,12 @@
-# Yume - WhatsApp-Native AI Scheduling Assistant
+# Parlo - WhatsApp-Native AI Scheduling Assistant
 
-**"Connect Yume to your WhatsApp in 2 minutes. Watch your appointments start booking themselves."**
+**"Connect Parlo to your WhatsApp in 2 minutes. Watch your appointments start booking themselves."**
 
-Yume is a conversational AI that handles appointment scheduling for beauty businesses (barbershops, nail salons, hair salons, spas) in Mexico via WhatsApp. Business owners connect their existing WhatsApp number, and Yume automatically handles booking conversations with their customers.
+Parlo is a conversational AI that handles appointment scheduling for beauty businesses (barbershops, nail salons, hair salons, spas) in Mexico via WhatsApp. Business owners connect their existing WhatsApp number, and Parlo automatically handles booking conversations with their customers.
 
 ## Table of Contents
 
-- [What is Yume?](#what-is-yume)
+- [What is Parlo?](#what-is-parlo)
 - [The Problem We Solve](#the-problem-we-solve)
 - [Our Solution](#our-solution)
 - [Target Market](#target-market)
@@ -20,11 +20,11 @@ Yume is a conversational AI that handles appointment scheduling for beauty busin
 - [Core Entities](#core-entities)
 - [Contributing](#contributing)
 
-## What is Yume?
+## What is Parlo?
 
-Yume integrates with a business owner's existing WhatsApp number using Meta's Coexistence feature. When a customer messages to book:
+Parlo integrates with a business owner's existing WhatsApp number using Meta's Coexistence feature. When a customer messages to book:
 
-1. Yume's AI handles the conversation naturally in Mexican Spanish
+1. Parlo's AI handles the conversation naturally in Mexican Spanish
 2. Checks real-time availability
 3. Books the appointment
 4. Sends confirmation to customer
@@ -54,9 +54,9 @@ This is painful because:
 A natural, conversational booking experience via WhatsApp:
 ```
 Cliente: Hola, quiero una cita para un corte
-Yume: ¡Claro! ¿Para qué día te gustaría agendar tu corte?
+Parlo: ¡Claro! ¿Para qué día te gustaría agendar tu corte?
 Cliente: Mañana en la tarde
-Yume: Perfecto. Mañana viernes tengo disponibles estos horarios...
+Parlo: Perfecto. Mañana viernes tengo disponibles estos horarios...
 ```
 
 ### For Business Owners
@@ -67,10 +67,10 @@ Yume: Perfecto. Mañana viernes tengo disponibles estos horarios...
 - **Manual takeover**: Jump into any conversation when needed
 
 ### For Staff Members
-Staff interact with Yume via their personal WhatsApp accounts:
+Staff interact with Parlo via their personal WhatsApp accounts:
 ```
 Pedro (empleado): Qué tengo hoy?
-Yume: Hola Pedro, aquí está tu agenda para hoy viernes:
+Parlo: Hola Pedro, aquí está tu agenda para hoy viernes:
 ⏰ 10:00 AM - Corte - Juan Pérez
 ⏰ 11:00 AM - Corte y barba - Miguel Sánchez
 ...
@@ -130,7 +130,7 @@ Yume: Hola Pedro, aquí está tu agenda para hoy viernes:
 ## Project Structure
 
 ```
-yume/
+parlo/
 ├── README.md                    # This file
 ├── CLAUDE.md                    # Quick reference for development
 ├── docs/
@@ -192,7 +192,7 @@ yume/
 1. **Clone the repository**
    ```bash
    git clone <repo>
-   cd yume
+   cd parlo
    ```
 
 2. **Create virtual environment and install dependencies**
@@ -323,7 +323,7 @@ Conversation ─────────────► Message
 - When a message arrives, we look up the sender's phone number
 - If it matches a registered staff member → staff conversation flow
 - If not → customer conversation flow
-- This enables staff to use their personal WhatsApp to interact with Yume
+- This enables staff to use their personal WhatsApp to interact with Parlo
 
 ## Architecture
 
@@ -393,10 +393,10 @@ Required variables (see `.env.example`):
 # Application
 APP_ENV=development
 APP_SECRET_KEY=your-secret-key
-APP_BASE_URL=https://api.yume.mx
+APP_BASE_URL=https://api.parlo.mx
 
 # Database
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/yume
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/parlo
 
 # Redis
 REDIS_URL=redis://localhost:6379/0

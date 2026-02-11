@@ -183,7 +183,7 @@ class TestPurchaseNumber:
             mock_response.json.return_value = {
                 "sid": "PN123456789",
                 "phone_number": "+525512345678",
-                "friendly_name": "Yume - Test Business",
+                "friendly_name": "Parlo - Test Business",
             }
             mock_response.raise_for_status = MagicMock()
 
@@ -194,8 +194,8 @@ class TestPurchaseNumber:
 
                 result = await service.purchase_number(
                     phone_number="+525512345678",
-                    friendly_name="Yume - Test Business",
-                    webhook_url="https://api.yume.mx/webhooks/whatsapp",
+                    friendly_name="Parlo - Test Business",
+                    webhook_url="https://api.parlo.mx/webhooks/whatsapp",
                 )
 
                 assert result["sid"] == "PN123456789"
@@ -264,7 +264,7 @@ class TestRegisterWhatsAppSender:
                 result = await service.register_whatsapp_sender(
                     phone_number="+525512345678",
                     business_name="Test Salon",
-                    status_callback_url="https://api.yume.mx/webhooks/sender-status",
+                    status_callback_url="https://api.parlo.mx/webhooks/sender-status",
                 )
 
                 assert result["sid"] == "XE123456789"
@@ -430,7 +430,7 @@ class TestProvisionNumberForBusiness:
                 return_value={
                     "sid": "PN123456",
                     "phone_number": "+525512345678",
-                    "friendly_name": "Yume - Test Salon",
+                    "friendly_name": "Parlo - Test Salon",
                 }
             )
             mock_instance.register_whatsapp_sender = AsyncMock(
@@ -447,7 +447,7 @@ class TestProvisionNumberForBusiness:
 
                 result = await provision_number_for_business(
                     business_name="Test Salon",
-                    webhook_base_url="https://api.yume.mx",
+                    webhook_base_url="https://api.parlo.mx",
                     country_code="MX",
                 )
 
@@ -471,7 +471,7 @@ class TestProvisionNumberForBusiness:
                 return_value={
                     "sid": "PN123456",
                     "phone_number": "+525512345678",
-                    "friendly_name": "Yume - Test Salon",
+                    "friendly_name": "Parlo - Test Salon",
                 }
             )
             mock_instance.close = AsyncMock()
@@ -479,7 +479,7 @@ class TestProvisionNumberForBusiness:
 
             result = await provision_number_for_business(
                 business_name="Test Salon",
-                webhook_base_url="https://api.yume.mx",
+                webhook_base_url="https://api.parlo.mx",
             )
 
             assert result is not None
@@ -501,7 +501,7 @@ class TestProvisionNumberForBusiness:
                 return_value={
                     "sid": "PN123456",
                     "phone_number": "+525512345678",
-                    "friendly_name": "Yume - Test Salon",
+                    "friendly_name": "Parlo - Test Salon",
                 }
             )
             mock_instance.register_whatsapp_sender = AsyncMock(return_value=None)
@@ -514,7 +514,7 @@ class TestProvisionNumberForBusiness:
 
                 result = await provision_number_for_business(
                     business_name="Test Salon",
-                    webhook_base_url="https://api.yume.mx",
+                    webhook_base_url="https://api.parlo.mx",
                 )
 
             assert result is None
@@ -533,7 +533,7 @@ class TestProvisionNumberForBusiness:
 
             result = await provision_number_for_business(
                 business_name="Test Salon",
-                webhook_base_url="https://api.yume.mx",
+                webhook_base_url="https://api.parlo.mx",
             )
 
             assert result is None
@@ -553,7 +553,7 @@ class TestProvisionNumberForBusiness:
 
             result = await provision_number_for_business(
                 business_name="Test Salon",
-                webhook_base_url="https://api.yume.mx",
+                webhook_base_url="https://api.parlo.mx",
             )
 
             assert result is None
@@ -572,7 +572,7 @@ class TestProvisionNumberForBusiness:
                 return_value={
                     "sid": "PN123456",
                     "phone_number": "+525512345678",
-                    "friendly_name": "Yume - Test",
+                    "friendly_name": "Parlo - Test",
                 }
             )
             mock_instance.close = AsyncMock()
@@ -580,15 +580,15 @@ class TestProvisionNumberForBusiness:
 
             await provision_number_for_business(
                 business_name="Test Salon",
-                webhook_base_url="https://api.yume.mx",
+                webhook_base_url="https://api.parlo.mx",
             )
 
             # Verify webhook URL format
             purchase_call = mock_instance.purchase_number.call_args
-            assert purchase_call[1]["webhook_url"] == "https://api.yume.mx/api/v1/webhooks/whatsapp"
+            assert purchase_call[1]["webhook_url"] == "https://api.parlo.mx/api/v1/webhooks/whatsapp"
 
     async def test_friendly_name_includes_business_name(self):
-        """Friendly name includes 'Yume - {business_name}'."""
+        """Friendly name includes 'Parlo - {business_name}'."""
         with patch(
             "app.services.twilio_provisioning.TwilioProvisioningService"
         ) as MockService:
@@ -601,7 +601,7 @@ class TestProvisionNumberForBusiness:
                 return_value={
                     "sid": "PN123456",
                     "phone_number": "+525512345678",
-                    "friendly_name": "Yume - Salón Bella",
+                    "friendly_name": "Parlo - Salón Bella",
                 }
             )
             mock_instance.close = AsyncMock()
@@ -609,12 +609,12 @@ class TestProvisionNumberForBusiness:
 
             await provision_number_for_business(
                 business_name="Salón Bella",
-                webhook_base_url="https://api.yume.mx",
+                webhook_base_url="https://api.parlo.mx",
             )
 
             # Verify friendly name format
             purchase_call = mock_instance.purchase_number.call_args
-            assert purchase_call[1]["friendly_name"] == "Yume - Salón Bella"
+            assert purchase_call[1]["friendly_name"] == "Parlo - Salón Bella"
 
     async def test_closes_service_on_success(self):
         """Service is closed after successful provisioning."""

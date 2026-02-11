@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
 
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/yume"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/parlo"
 
     @property
     def async_database_url(self) -> str:
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_whatsapp_number: str = ""  # Format: whatsapp:+14155238886
-    twilio_waba_id: str = ""  # Yume's WhatsApp Business Account ID for Senders API
+    twilio_waba_id: str = ""  # Parlo's WhatsApp Business Account ID for Senders API
     twilio_senders_webhook_url: str = ""  # Callback URL for sender status changes
 
     # OpenAI

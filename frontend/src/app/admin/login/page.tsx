@@ -33,7 +33,7 @@ export default function AdminLoginPage() {
       <div className="max-w-md w-full mx-4">
         <div className="bg-white rounded-lg shadow-lg p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Yume Admin</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Parlo Admin</h1>
             <p className="text-gray-500 mt-2">Enter your admin password</p>
           </div>
 

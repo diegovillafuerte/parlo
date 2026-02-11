@@ -1,4 +1,4 @@
-"""Organization model - represents a business using Yume."""
+"""Organization model - represents a business using Parlo."""
 
 from datetime import datetime
 from enum import Enum
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from app.models.end_customer import EndCustomer
     from app.models.location import Location
     from app.models.service_type import ServiceType
-    from app.models.yume_user import YumeUser
+    from app.models.parlo_user import ParloUser
 
 
 class OrganizationStatus(str, Enum):
@@ -29,7 +29,7 @@ class OrganizationStatus(str, Enum):
 
 
 class Organization(Base, UUIDMixin, TimestampMixin):
-    """The business entity (e.g., 'Barbería Don Carlos')."""
+    """The business entity (e.g., 'Barberia Don Carlos')."""
 
     __tablename__ = "organizations"
 
@@ -85,8 +85,8 @@ class Organization(Base, UUIDMixin, TimestampMixin):
     locations: Mapped[list["Location"]] = relationship(
         "Location", back_populates="organization", cascade="all, delete-orphan"
     )
-    yume_users: Mapped[list["YumeUser"]] = relationship(
-        "YumeUser", back_populates="organization", cascade="all, delete-orphan"
+    parlo_users: Mapped[list["ParloUser"]] = relationship(
+        "ParloUser", back_populates="organization", cascade="all, delete-orphan"
     )
     service_types: Mapped[list["ServiceType"]] = relationship(
         "ServiceType", back_populates="organization", cascade="all, delete-orphan"

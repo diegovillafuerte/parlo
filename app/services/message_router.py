@@ -1,10 +1,10 @@
-"""Message Router - THE CORE of Yume's value proposition.
+"""Message Router - THE CORE of Parlo's value proposition.
 
 This module routes incoming WhatsApp messages to the correct handler based on
 the two-channel architecture defined in docs/PROJECT_SPEC.md.
 
 Two-Channel Architecture:
-1. YUME CENTRAL NUMBER - B2B interactions
+1. PARLO CENTRAL NUMBER - B2B interactions
    - Business onboarding (unknown senders)
    - Business management (staff of single business)
    - Redirect message (staff of multiple businesses)
@@ -39,7 +39,7 @@ from app.models import (
     MessageSenderType,
     Organization,
     OrganizationStatus,
-    YumeUser,
+    ParloUser,
 )
 from app.services import customer as customer_service
 from app.services import staff as staff_service
@@ -59,7 +59,7 @@ MULTI_BUSINESS_REDIRECT_MESSAGE = """¡Hola! Veo que estás registrado en más d
 
 Para gestionar tu agenda, escribe directamente al número de WhatsApp del negocio que quieras administrar.
 
-Si necesitas ayuda, escríbenos a soporte@yume.mx"""
+Si necesitas ayuda, escríbenos a soporte@parlo.mx"""
 
 
 def _build_onboarding_completion_message(org: Organization) -> str:
@@ -85,7 +85,7 @@ def _build_onboarding_completion_message(org: Organization) -> str:
         )
 
     return (
-        f"\U0001f389 \u00a1{business_name} ya est\u00e1 en Yume!\n"
+        f"\U0001f389 \u00a1{business_name} ya est\u00e1 en Parlo!\n"
         f"\n"
         f"Tu cuenta est\u00e1 activa y lista para recibir clientes.\n"
         f"\n"
@@ -107,9 +107,9 @@ class MessageRouter:
 
     | Case | Recipient | Sender | Route |
     |------|-----------|--------|-------|
-    | 1 | Yume Central | Unknown/Incomplete onboarding | Business Onboarding |
-    | 2a | Yume Central | Staff of 1 business | Business Management |
-    | 2b | Yume Central | Staff of 2+ businesses | Redirect Message |
+    | 1 | Parlo Central | Unknown/Incomplete onboarding | Business Onboarding |
+    | 2a | Parlo Central | Staff of 1 business | Business Management |
+    | 2b | Parlo Central | Staff of 2+ businesses | Redirect Message |
     | 3 | Business Number | Pre-registered staff (first msg) | Staff Onboarding |
     | 4 | Business Number | Known staff | Business Management |
     | 5 | Business Number | Anyone else | End Customer |
@@ -178,7 +178,7 @@ class MessageRouter:
                 message_content=message_content,
             )
         else:
-            # YUME CENTRAL NUMBER FLOW (Cases 1, 2a, 2b)
+            # PARLO CENTRAL NUMBER FLOW (Cases 1, 2a, 2b)
             return await self._route_central_number_message(
                 phone_number_id=phone_number_id,
                 sender_phone=sender_phone,
@@ -196,7 +196,7 @@ class MessageRouter:
         message_id: str,
         message_content: str,
     ) -> dict[str, str]:
-        """Route message received on Yume's central WhatsApp number.
+        """Route message received on Parlo's central WhatsApp number.
 
         Implements Cases 1, 2a, 2b from the routing table:
         - Case 1: Unknown sender → Business Onboarding
@@ -204,7 +204,7 @@ class MessageRouter:
         - Case 2b: Staff of 2+ businesses → Redirect Message
 
         Args:
-            phone_number_id: Yume's central phone number ID
+            phone_number_id: Parlo's central phone number ID
             sender_phone: Sender's phone number
             sender_name: Sender's WhatsApp profile name
             message_id: WhatsApp message ID
@@ -580,7 +580,7 @@ class MessageRouter:
     async def _handle_staff_onboarding(
         self,
         org: Organization,
-        staff: YumeUser,
+        staff: ParloUser,
         message_content: str,
         sender_phone: str,
         message_id: str,
@@ -656,7 +656,7 @@ class MessageRouter:
     async def _handle_business_management(
         self,
         org: Organization,
-        staff: YumeUser,
+        staff: ParloUser,
         message_content: str,
         sender_phone: str,
         message_id: str,
@@ -665,7 +665,7 @@ class MessageRouter:
 
         Args:
             org: Organization
-            staff: YumeUser member
+            staff: ParloUser member
             message_content: Message text
             sender_phone: Staff phone
             message_id: Message ID

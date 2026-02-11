@@ -37,7 +37,7 @@ export default function AdminConversationDetailPage() {
       case 'customer':
         return 'Customer';
       case 'ai':
-        return 'AI (Yume)';
+        return 'AI (Parlo)';
       case 'staff':
         return 'Staff';
       default:
