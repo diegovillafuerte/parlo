@@ -15,7 +15,6 @@ parlo-landing
 scripts
 render.yaml
 render-staging.yaml
-README.md
 CLAUDE.md
 .github
 .DS_Store
