@@ -411,14 +411,14 @@ NEXT_PUBLIC_API_URL=https://parlo-backend.onrender.com/api/v1
 ```
 
 ### Render URLs
-- Backend: `https://parlo-backend-8b6h.onrender.com`
+- Backend: `https://parlo-backend.onrender.com`
 - Frontend: `https://parlo-frontend.onrender.com`
 - Admin Dashboard: `https://parlo-frontend.onrender.com/admin`
 
 ### Render CLI
 - Load RENDER_API_KEY from .env before running render commands: `export $(grep RENDER_API_KEY .env | xargs)`
 - Use `--output json --confirm` for non-interactive mode
-- Service IDs:
+- Old service IDs (update after decommissioning yume-* services):
   - Backend: srv-d6006uh4tr6s73a4ctsg
   - Frontend: srv-d6006gh4tr6s73a4cl9g
   - Postgres: dpg-d6006gh4tr6s73a4clk0-a
@@ -428,7 +428,6 @@ NEXT_PUBLIC_API_URL=https://parlo-backend.onrender.com/api/v1
 ## References
 
 - **Full Specification:** `docs/PROJECT_SPEC.md` (business requirements, user journeys, message routing, state machines, permissions)
-- **Progress:** `workplan.md`
 - [Twilio WhatsApp](https://www.twilio.com/docs/whatsapp)
 - [OpenAI API](https://platform.openai.com/docs/api-reference)
 - [FastAPI](https://fastapi.tiangolo.com/)
