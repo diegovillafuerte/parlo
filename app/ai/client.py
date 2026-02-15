@@ -40,6 +40,7 @@ class OpenAIClient:
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 1024,
         model: str = "gpt-4.1-mini",
+        tool_choice: str = "auto",
     ) -> dict[str, Any]:
         """Create a message using GPT.
 
@@ -81,7 +82,7 @@ class OpenAIClient:
             if tools:
                 # Convert to OpenAI function format
                 params["tools"] = self._convert_tools_to_openai_format(tools)
-                params["tool_choice"] = "auto"
+                params["tool_choice"] = tool_choice
 
             # Make API call
             response = self.client.chat.completions.create(**params)

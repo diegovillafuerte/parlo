@@ -633,6 +633,7 @@ class OnboardingHandler(ToolCallingMixin):
             messages=history,
             tools=ONBOARDING_TOOLS,
             tool_executor=execute_tool,
+            initial_tool_choice="required",
         )
 
         # Store AI response (atomic INSERT)

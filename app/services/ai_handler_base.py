@@ -33,6 +33,7 @@ class ToolCallingMixin:
         tools: list[dict[str, Any]],
         tool_executor: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]],
         max_iterations: int = 5,
+        initial_tool_choice: str = "auto",
     ) -> str:
         """Universal tool loop - works for any tool set.
 
@@ -48,22 +49,31 @@ class ToolCallingMixin:
             tools: Tool definitions
             tool_executor: Async function(tool_name, tool_input) -> result
             max_iterations: Max tool calling rounds to prevent infinite loops
+            initial_tool_choice: tool_choice for the first iteration ("auto" or
+                "required"). Use "required" for state-machine flows where a tool
+                call must happen to advance state.
 
         Returns:
             Final response text from AI
         """
         response = None
+        tool_called = False
 
         for iteration in range(max_iterations):
             logger.debug(f"Tool loop iteration {iteration + 1}")
+
+            # Force tool call on first iteration when initial_tool_choice="required"
+            current_tool_choice = "auto" if tool_called else initial_tool_choice
 
             response = self.client.create_message(
                 system_prompt=system_prompt,
                 messages=messages,
                 tools=tools,
+                tool_choice=current_tool_choice,
             )
 
             if self.client.has_tool_calls(response):
+                tool_called = True
                 tool_calls = self.client.extract_tool_calls(response)
                 logger.info(f"AI wants to use {len(tool_calls)} tool(s)")
 

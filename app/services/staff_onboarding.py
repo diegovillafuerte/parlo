@@ -391,15 +391,22 @@ class StaffOnboardingHandler:
             Final response text
         """
         max_iterations = 5
+        tool_called = False
 
         for _iteration in range(max_iterations):
+            # Force tool call on first iteration to prevent AI from skipping
+            # state-machine tools and responding with text only
+            current_tool_choice = "auto" if tool_called else "required"
+
             response = self.client.create_message(
                 system_prompt=system_prompt,
                 messages=messages,
                 tools=STAFF_ONBOARDING_TOOLS,
+                tool_choice=current_tool_choice,
             )
 
             if self.client.has_tool_calls(response):
+                tool_called = True
                 tool_calls = self.client.extract_tool_calls(response)
                 logger.info(f"Staff onboarding AI wants to use {len(tool_calls)} tool(s)")
 
