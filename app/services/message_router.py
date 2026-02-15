@@ -458,6 +458,57 @@ class MessageRouter:
                             org.id, staff.id
                         )).id
                 else:
+                    # Check if this staff member has an active handoff
+                    from app.services import handoff as handoff_service
+
+                    handoff_conv = await handoff_service.get_active_handoff_for_owner(
+                        self.db, org.id, staff.id
+                    )
+
+                    if handoff_conv:
+                        # Owner is in handoff mode — classify intent
+                        customer_name = (handoff_conv.context or {}).get(
+                            "handoff_customer_name", "Cliente"
+                        )
+                        logger.info(
+                            f"\n🔀 CASE 4: HANDOFF RELAY\n"
+                            f"   Owner: {staff.name} → Customer: {customer_name}\n"
+                            f"   → Classifying owner intent"
+                        )
+
+                        intent = await handoff_service.classify_owner_intent(
+                            message=message_content,
+                            customer_name=customer_name,
+                        )
+
+                        from_number = resolve_whatsapp_sender(org) or phone_number_id
+
+                        if intent == "end":
+                            await handoff_service.end_handoff(
+                                db=self.db,
+                                org=org,
+                                conversation=handoff_conv,
+                                mock_mode=self.whatsapp.mock_mode,
+                            )
+                        else:
+                            await handoff_service.relay_owner_to_customer(
+                                db=self.db,
+                                org=org,
+                                conversation=handoff_conv,
+                                message_content=message_content,
+                                mock_mode=self.whatsapp.mock_mode,
+                            )
+
+                        await self.db.commit()
+                        return {
+                            "status": "success",
+                            "case": "4",
+                            "sender_type": MessageSenderType.STAFF.value,
+                            "organization_id": str(org.id),
+                            "route": "handoff_relay",
+                            "response_text": f"[Handoff {intent}]",
+                        }
+
                     # Normal business management
                     logger.info(
                         f"\n🔵 CASE 4: BUSINESS MANAGEMENT (Business Number)\n"
@@ -487,6 +538,40 @@ class MessageRouter:
                 f"   Customer: {customer.name or sender_phone} at {org.name}\n"
                 f"   → Routing to End Customer Handler"
             )
+
+            # Check if customer has an active handoff — relay to owner instead of AI
+            customer_conversation = await self._get_or_create_conversation(org.id, customer.id)
+            if customer_conversation.status == ConversationStatus.HANDED_OFF.value:
+                from app.services import handoff as handoff_service
+
+                logger.info(f"   🔀 Customer message during handoff → relaying to owner")
+
+                # Store inbound message
+                await self._store_message(
+                    conversation_id=customer_conversation.id,
+                    direction=MessageDirection.INBOUND,
+                    sender_type=MessageSenderType.CUSTOMER,
+                    content=message_content,
+                    whatsapp_message_id=message_id,
+                )
+
+                await handoff_service.relay_customer_to_owner(
+                    db=self.db,
+                    org=org,
+                    conversation=customer_conversation,
+                    message_content=message_content,
+                    mock_mode=self.whatsapp.mock_mode,
+                )
+
+                await self.db.commit()
+                return {
+                    "status": "success",
+                    "case": "5",
+                    "sender_type": MessageSenderType.CUSTOMER.value,
+                    "organization_id": str(org.id),
+                    "route": "handoff_relay",
+                    "response_text": f"[Relayed to owner]",
+                }
 
             response_text, conversation_id = await self._handle_end_customer(
                 org=org,
@@ -847,19 +932,24 @@ class MessageRouter:
     ) -> Conversation:
         """Get or create active conversation for customer.
 
+        Also finds conversations in HANDED_OFF status (still active, just human-handled).
+
         Args:
             organization_id: Organization ID
             customer_id: Customer ID
 
         Returns:
-            Active conversation
+            Active or handed-off conversation
         """
-        # Try to find active conversation
+        # Try to find active or handed-off conversation
         result = await self.db.execute(
             select(Conversation).where(
                 Conversation.organization_id == organization_id,
                 Conversation.end_customer_id == customer_id,
-                Conversation.status == ConversationStatus.ACTIVE.value,
+                Conversation.status.in_([
+                    ConversationStatus.ACTIVE.value,
+                    ConversationStatus.HANDED_OFF.value,
+                ]),
             )
         )
         conversation = result.scalar_one_or_none()

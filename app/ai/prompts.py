@@ -3,8 +3,9 @@
 All prompts are in Mexican Spanish, using natural "tú" form.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.models import EndCustomer, Organization, ServiceType, ParloUser
 
@@ -30,18 +31,40 @@ def format_services(services: list[ServiceType]) -> str:
     return "\n".join(lines)
 
 
-def format_business_hours(org: Organization) -> str:
+def format_business_hours(business_hours: dict | None) -> str:
     """Format business hours for prompt.
 
     Args:
-        org: Organization with settings
+        business_hours: Location business hours dict, e.g.
+            {"monday": {"open": "09:00", "close": "21:00"}, "sunday": {"closed": true}}
 
     Returns:
         Formatted business hours string
     """
-    # TODO: Get actual hours from location
-    # For now, return placeholder
-    return "Lunes a Sábado: 10:00 AM - 8:00 PM"
+    if not business_hours:
+        return "Horario no configurado"
+
+    day_names = {
+        "monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles",
+        "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado",
+        "sunday": "Domingo",
+    }
+    day_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+    lines = []
+    for day_key in day_order:
+        day_data = business_hours.get(day_key)
+        if not day_data:
+            continue
+        day_name = day_names.get(day_key, day_key)
+        if day_data.get("closed"):
+            lines.append(f"- {day_name}: Cerrado")
+        else:
+            open_time = day_data.get("open", "")
+            close_time = day_data.get("close", "")
+            lines.append(f"- {day_name}: {open_time} - {close_time}")
+
+    return "\n".join(lines) if lines else "Horario no configurado"
 
 
 def format_previous_appointments(appointments: list[Any]) -> str:
@@ -106,6 +129,8 @@ def build_customer_system_prompt(
     services: list[ServiceType],
     previous_appointments: list[Any] | None = None,
     current_time: datetime | None = None,
+    business_hours: dict | None = None,
+    address: str | None = None,
 ) -> str:
     """Build system prompt for customer conversations.
 
@@ -115,12 +140,16 @@ def build_customer_system_prompt(
         services: Available services
         previous_appointments: Customer's past appointments
         current_time: Current time for context
+        business_hours: Location business hours dict
+        address: Location address
 
     Returns:
         System prompt string
     """
-    current_time = current_time or datetime.now()
-    time_str = current_time.strftime("%A %d de %B, %Y a las %I:%M %p")
+    org_tz = ZoneInfo(org.timezone) if org.timezone else ZoneInfo("America/Mexico_City")
+    current_time = current_time or datetime.now(timezone.utc)
+    current_local = current_time.astimezone(org_tz) if current_time.tzinfo else datetime.now(org_tz)
+    time_str = current_local.strftime("%A %d de %B, %Y a las %I:%M %p")
 
     # Format staff list if available
     staff_info = ""
@@ -133,10 +162,11 @@ def build_customer_system_prompt(
 
 ## Información del Negocio
 - Nombre: {org.name}
+{f"- Dirección: {address}" if address else ""}
 - Servicios disponibles:
 {format_services(services)}
 - Horario de atención:
-{format_business_hours(org)}
+{format_business_hours(business_hours)}
 
 ## Información del Cliente
 - Teléfono: {customer.phone_number}
@@ -180,7 +210,7 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 2. Español mexicano natural, tuteo ("tú"), casual pero profesional.
 3. SIEMPRE usa check_availability antes de ofrecer horarios. NUNCA inventes.
 4. Si el cliente da nombre durante la conversación, usa update_customer_info.
-5. Para quejas, preguntas de precios especiales o algo complejo: usa handoff_to_human.
+5. Solo usa handoff_to_human si el cliente pide EXPLÍCITAMENTE hablar con una persona. Nunca lo sugieras tú.
 6. Si tienes el ID del servicio o empleado, úsalo en las herramientas (service_id, staff_id).
 
 ## Formato de Fechas y Horarios
@@ -205,7 +235,7 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 
 ### Cliente pregunta precios
 - Muestra los precios del menú
-- Si pregunta por descuentos o paquetes especiales, usa handoff_to_human
+- Si pregunta por descuentos, responde con los precios del menú. Solo transfiere si insisten en hablar con alguien.
 
 ## Restricciones
 - NUNCA inventes horarios. Siempre verifica disponibilidad.
@@ -228,6 +258,8 @@ def build_staff_system_prompt(
     staff: ParloUser,
     services: list[ServiceType],
     current_time: datetime | None = None,
+    business_hours: dict | None = None,
+    address: str | None = None,
 ) -> str:
     """Build system prompt for staff conversations.
 
@@ -236,14 +268,18 @@ def build_staff_system_prompt(
         staff: Staff member
         services: Available services
         current_time: Current time for context
+        business_hours: Location business hours dict
+        address: Location address
 
     Returns:
         System prompt string
     """
-    current_time = current_time or datetime.now()
-    time_str = current_time.strftime("%A %d de %B, %Y a las %I:%M %p")
-    today_date = current_time.strftime("%Y-%m-%d")
-    tomorrow_date = (current_time + timedelta(days=1)).strftime("%Y-%m-%d")
+    org_tz = ZoneInfo(org.timezone) if org.timezone else ZoneInfo("America/Mexico_City")
+    current_time = current_time or datetime.now(timezone.utc)
+    current_local = current_time.astimezone(org_tz) if current_time.tzinfo else datetime.now(org_tz)
+    time_str = current_local.strftime("%A %d de %B, %Y a las %I:%M %p")
+    today_date = current_local.strftime("%Y-%m-%d")
+    tomorrow_date = (current_local + timedelta(days=1)).strftime("%Y-%m-%d")
 
     role_display = "dueño" if staff.role == "owner" else "empleado"
 
@@ -256,10 +292,11 @@ def build_staff_system_prompt(
 
 ## Información del Negocio
 - Nombre: {org.name}
+{f"- Dirección: {address}" if address else ""}
 - Servicios disponibles:
 {format_services(services)}
 - Horario de atención:
-{format_business_hours(org)}
+{format_business_hours(business_hours)}
 
 ## Información del Empleado
 - Nombre: {staff.name}

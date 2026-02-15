@@ -23,6 +23,8 @@ from app.models import (
     AppointmentStatus,
     Availability,
     AvailabilityType,
+    Conversation,
+    ConversationStatus,
     Customer,
     Organization,
     ServiceType,
@@ -157,7 +159,7 @@ CUSTOMER_TOOLS = [
     },
     {
         "name": "handoff_to_human",
-        "description": "Transfiere la conversación al dueño del negocio cuando no puedes ayudar o el cliente lo solicita.",
+        "description": "Transfiere la conversación al dueño del negocio. SOLO usa esta herramienta cuando el cliente EXPLÍCITAMENTE pida hablar con una persona real (ej: 'quiero hablar con alguien', 'pásame con el dueño'). NUNCA la uses por iniciativa propia.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -494,7 +496,7 @@ class ToolHandler:
             "get_my_appointments": lambda inp: self._get_my_appointments(customer),
             "cancel_appointment": lambda inp: self._cancel_appointment(inp, customer),
             "reschedule_appointment": lambda inp: self._reschedule_appointment(inp, customer),
-            "handoff_to_human": self._handoff_to_human,
+            "handoff_to_human": lambda inp: self._handoff_to_human(inp, customer),
             "update_customer_info": lambda inp: self._update_customer_info(inp, customer),
             # Staff tools
             "get_my_schedule": lambda inp: self._get_my_schedule(inp, staff),
@@ -1036,18 +1038,45 @@ class ToolHandler:
             "new_time": local_new.strftime("%I:%M %p"),
         }
 
-    async def _handoff_to_human(self, tool_input: dict[str, Any]) -> dict[str, Any]:
-        """Handoff conversation to business owner."""
+    async def _handoff_to_human(
+        self, tool_input: dict[str, Any], customer: Customer | None
+    ) -> dict[str, Any]:
+        """Handoff conversation to business owner via WhatsApp relay."""
         reason = tool_input.get("reason", "Solicitud del cliente")
 
-        # TODO: Implement actual notification to owner
-        # For now, just acknowledge the handoff
+        if not customer:
+            return {"error": "No se pudo identificar al cliente para la transferencia."}
 
-        return {
-            "success": True,
-            "message": f"Conversación transferida al dueño del negocio. Razón: {reason}",
-            "notify_owner": True,
-        }
+        from app.services.handoff import initiate_handoff
+
+        # Find the customer's active conversation
+        conversation = await self._get_customer_conversation(customer.id)
+        if not conversation:
+            return {"error": "No se encontró la conversación activa."}
+
+        result = await initiate_handoff(
+            db=self.db,
+            org=self.org,
+            customer=customer,
+            conversation=conversation,
+            reason=reason,
+            mock_mode=self.mock_mode,
+        )
+
+        return result
+
+    async def _get_customer_conversation(self, customer_id: UUID) -> Conversation | None:
+        """Get the active conversation for a customer."""
+        from app.models import Conversation, ConversationStatus
+
+        result = await self.db.execute(
+            select(Conversation).where(
+                Conversation.organization_id == self.org.id,
+                Conversation.end_customer_id == customer_id,
+                Conversation.status == ConversationStatus.ACTIVE.value,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def _update_customer_info(
         self, tool_input: dict[str, Any], customer: Customer | None

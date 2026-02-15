@@ -152,3 +152,42 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
         await engine.dispose()
 
     return asyncio.run(_check_abandoned())
+
+
+@celery_app.task(name="app.tasks.cleanup.check_handoff_timeouts")
+def check_handoff_timeouts(timeout_minutes: int = 30) -> dict:
+    """Check for and end timed-out handoff conversations.
+
+    Handoffs that have been inactive for longer than timeout_minutes
+    are automatically ended, notifying both owner and customer.
+
+    Args:
+        timeout_minutes: Inactivity threshold in minutes (default 30)
+
+    Returns:
+        Dict with count of timed-out handoffs
+    """
+    import asyncio
+
+    async def _check_timeouts():
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+        from app.config import get_settings
+        from app.services.handoff import check_handoff_timeouts as _check
+
+        settings = get_settings()
+        engine = create_async_engine(settings.async_database_url)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        async with session_factory() as db:
+            count = await _check(db, timeout_minutes=timeout_minutes)
+            await db.commit()
+
+            if count > 0:
+                logger.info(f"Timed out {count} handoff conversations")
+
+            return {"timed_out_count": count, "timeout_minutes": timeout_minutes}
+
+        await engine.dispose()
+
+    return asyncio.run(_check_timeouts())

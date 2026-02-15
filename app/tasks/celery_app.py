@@ -56,5 +56,10 @@ celery_app.conf.update(
             "schedule": 600.0,  # Every 10 minutes
             "args": [30],  # 30 minute timeout
         },
+        "check-handoff-timeouts": {
+            "task": "app.tasks.cleanup.check_handoff_timeouts",
+            "schedule": 300.0,  # Every 5 minutes
+            "args": [30],  # 30-minute timeout
+        },
     },
 )

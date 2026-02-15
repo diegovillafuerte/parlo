@@ -567,6 +567,14 @@ class CustomerFlowHandler:
                     if flow_session.state == CustomerFlowState.COLLECTING_PERSONAL_INFO.value:
                         flow_session.state = CustomerFlowState.CONFIRMING_SUMMARY.value
 
+            # Handoff to human — deactivate any active flow session
+            elif tool_name == "handoff_to_human" and tool_output.get("handoff_initiated"):
+                if flow_session and flow_session.is_active:
+                    flow_session.is_active = False
+                    collected = dict(flow_session.collected_data or {})
+                    collected["interrupted_by_handoff"] = True
+                    flow_session.collected_data = collected
+
         if flow_session:
             await self.db.flush()
 
