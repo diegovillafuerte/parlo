@@ -21,7 +21,9 @@ async def test_business_onboarding_starts(eval_db):
     central_number = "+14155238886"
 
     result, _ = await simulate_message(
-        eval_db, unknown_phone, central_number,
+        eval_db,
+        unknown_phone,
+        central_number,
         "Hola, quiero registrar mi negocio",
         sender_name="Nuevo Negocio",
     )
@@ -50,7 +52,9 @@ async def test_business_onboarding_provides_name(eval_db):
 
     # First message — starts onboarding
     result1, _ = await simulate_message(
-        eval_db, unknown_phone, central_number,
+        eval_db,
+        unknown_phone,
+        central_number,
         "Hola, quiero usar Parlo",
         sender_name="Test Owner",
     )
@@ -58,7 +62,9 @@ async def test_business_onboarding_provides_name(eval_db):
 
     # Second message — provide business name
     result2, _ = await simulate_message(
-        eval_db, unknown_phone, central_number,
+        eval_db,
+        unknown_phone,
+        central_number,
         "Mi negocio se llama Salon Belleza Luna",
     )
     assert result2["status"] == "success"

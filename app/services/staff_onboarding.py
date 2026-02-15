@@ -25,11 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.client import OpenAIClient, get_openai_client
 from app.models import (
     Organization,
+    ParloUserPermissionLevel,
     Staff,
     StaffOnboardingSession,
     StaffOnboardingState,
-    ParloUserPermissionLevel,
 )
+from app.services.tracing import traced
 from app.services.whatsapp import WhatsAppClient
 
 logger = logging.getLogger(__name__)
@@ -70,13 +71,62 @@ STAFF_ONBOARDING_TOOLS = [
                     "type": "object",
                     "description": "Horarios personalizados por día (si schedule_type es 'custom')",
                     "properties": {
-                        "monday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
-                        "tuesday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
-                        "wednesday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
-                        "thursday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
-                        "friday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
-                        "saturday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
-                        "sunday": {"type": "object", "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "off": {"type": "boolean"}}},
+                        "monday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
+                        "tuesday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
+                        "wednesday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
+                        "thursday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
+                        "friday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
+                        "saturday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
+                        "sunday": {
+                            "type": "object",
+                            "properties": {
+                                "start": {"type": "string"},
+                                "end": {"type": "string"},
+                                "off": {"type": "boolean"},
+                            },
+                        },
                     },
                 },
             },
@@ -104,6 +154,7 @@ def build_staff_onboarding_system_prompt(
     session: StaffOnboardingSession,
     staff: Staff,
     org: Organization,
+    business_hours_display: str | None = None,
 ) -> str:
     """Build the system prompt for staff onboarding conversations.
 
@@ -111,6 +162,7 @@ def build_staff_onboarding_system_prompt(
         session: Current onboarding session
         staff: Staff member being onboarded
         org: Organization
+        business_hours_display: Formatted business hours string (optional)
 
     Returns:
         System prompt string
@@ -138,14 +190,15 @@ def build_staff_onboarding_system_prompt(
 - Empleado: {current_name}
 - Este es el PRIMER mensaje de {current_name} a Parlo
 - El dueño ya lo registró, ahora completamos su configuración
+{f"- Horario del negocio: {business_hours_display}" if business_hours_display else ""}
 
 ## Estado Actual
 {current_step}
 
 ## Datos Recolectados
-- Nombre: {collected.get('name', 'No confirmado aún')}
-- Disponibilidad: {collected.get('availability', 'No configurada')}
-- Tutorial: {'Visto' if collected.get('tutorial_viewed') else 'Pendiente'}
+- Nombre: {collected.get("name", "No confirmado aún")}
+- Disponibilidad: {collected.get("availability", "No configurada")}
+- Tutorial: {"Visto" if collected.get("tutorial_viewed") else "Pendiente"}
 
 ## Flujo de Onboarding
 
@@ -153,13 +206,13 @@ def build_staff_onboarding_system_prompt(
 - Saluda amablemente y da la bienvenida a {org.name}
 - Pregunta si el nombre "{staff.name}" es correcto o prefieren otro
 - Usa `confirm_name` cuando confirmen o proporcionen su nombre preferido
-- Ejemplo: "¡Hola {staff.name}! Te damos la bienvenida al equipo de {org.name} en Parlo. ¿Tu nombre es correcto o prefieres que te llame diferente?"
+- Ejemplo: "¡Hola {staff.name}! Soy Parlo, un asistente de WhatsApp que te ayuda a gestionar tus citas en {org.name}. Tu jefe te registró — necesito confirmar un par de cosas. ¿Tu nombre '{staff.name}' es correcto o prefieres que te llame diferente?"
 
 ### Paso 2: Disponibilidad (Simplificado)
 - Pregunta si trabajan el mismo horario que el negocio o tienen horario especial
 - Usa `save_availability` con schedule_type="same_as_business" si usan horario del negocio
 - Si tienen horario especial, pregunta qué días trabajan y en qué horario
-- Ejemplo: "¿Trabajas el mismo horario que {org.name}, o tienes un horario diferente?"
+- {('Ejemplo: "El horario de ' + org.name + " es: " + business_hours_display + '. ¿Trabajas ese mismo horario o tienes uno diferente?"') if business_hours_display else ('Ejemplo: "¿Trabajas el mismo horario que ' + org.name + ' o tienes un horario diferente?"')}
 
 ### Paso 3: Tutorial Rápido
 - Explica brevemente qué pueden hacer con Parlo:
@@ -168,7 +221,7 @@ def build_staff_onboarding_system_prompt(
   - "Registrar clientes que llegan sin cita" → walk-ins
 - Pregunta si tienen dudas
 - Usa `complete_tutorial` cuando confirmen que entendieron
-- Ejemplo: "Con Parlo puedes: ver tu agenda, bloquear horarios cuando no estés, y registrar clientes que lleguen sin cita. ¿Todo claro?"
+- Ejemplo: "Con Parlo puedes:\n• Ver tu agenda — escribe '¿qué tengo hoy?'\n• Bloquear horarios cuando no estés\n• Registrar clientes que lleguen sin cita\n\n¿Todo claro?"
 
 ## Instrucciones
 - Habla en español mexicano natural, usa "tú"
@@ -241,6 +294,7 @@ class StaffOnboardingHandler:
         logger.info(f"Created staff onboarding session for {staff.name} (ID: {staff.id})")
         return session
 
+    @traced
     async def handle_message(
         self,
         session: StaffOnboardingSession,
@@ -273,8 +327,28 @@ class StaffOnboardingHandler:
         if not self.client.is_configured:
             return self._get_fallback_response(staff, org)
 
+        # Load business hours for the prompt
+        business_hours_display = None
+        try:
+            from app.ai.prompts import format_business_hours
+            from app.models import Location
+
+            loc_result = await self.db.execute(
+                select(Location).where(
+                    Location.organization_id == org.id,
+                    Location.is_primary == True,
+                )
+            )
+            location = loc_result.scalar_one_or_none()
+            if location and location.business_hours:
+                business_hours_display = format_business_hours(location.business_hours)
+        except Exception:
+            pass  # Non-critical, continue without hours
+
         # Build system prompt
-        system_prompt = build_staff_onboarding_system_prompt(session, staff, org)
+        system_prompt = build_staff_onboarding_system_prompt(
+            session, staff, org, business_hours_display=business_hours_display
+        )
 
         # Get conversation history from context
         history = session.conversation_context.get("messages", [])
@@ -317,7 +391,7 @@ class StaffOnboardingHandler:
         """
         max_iterations = 5
 
-        for iteration in range(max_iterations):
+        for _iteration in range(max_iterations):
             response = self.client.create_message(
                 system_prompt=system_prompt,
                 messages=messages,
@@ -329,9 +403,7 @@ class StaffOnboardingHandler:
                 logger.info(f"Staff onboarding AI wants to use {len(tool_calls)} tool(s)")
 
                 # Add assistant message with tool calls
-                messages.append(
-                    self.client.format_assistant_message_with_tool_calls(response)
-                )
+                messages.append(self.client.format_assistant_message_with_tool_calls(response))
 
                 # Execute each tool
                 for tool_call in tool_calls:
@@ -342,15 +414,17 @@ class StaffOnboardingHandler:
                         tool_call["name"],
                         tool_call["input"],
                     )
-                    messages.append(
-                        self.client.format_tool_result_message(tool_call["id"], result)
-                    )
+                    messages.append(self.client.format_tool_result_message(tool_call["id"], result))
             else:
                 # Final response
                 return self.client.extract_text_response(response)
 
         logger.warning("Hit max iterations in staff onboarding")
-        return self.client.extract_text_response(response) if response else "Lo siento, hubo un error."
+        return (
+            self.client.extract_text_response(response)
+            if response
+            else "Disculpa, tuve un problema procesando tu solicitud. ¿Puedes intentar de nuevo?"
+        )
 
     async def _execute_tool(
         self,
@@ -375,14 +449,14 @@ class StaffOnboardingHandler:
         start_time = time.time()
 
         logger.info(
-            f"\n{'='*60}\n"
+            f"\n{'=' * 60}\n"
             f"🔧 STAFF ONBOARDING TOOL EXECUTION\n"
-            f"{'='*60}\n"
+            f"{'=' * 60}\n"
             f"   Staff: {staff.name} ({staff.phone_number})\n"
             f"   State: {session.state}\n"
             f"   Tool: {tool_name}\n"
             f"   Input: {tool_input}\n"
-            f"{'='*60}"
+            f"{'=' * 60}"
         )
 
         collected = dict(session.collected_data or {})
@@ -446,12 +520,12 @@ class StaffOnboardingHandler:
 
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.info(
-                    f"\n{'🎉'*20}\n"
+                    f"\n{'🎉' * 20}\n"
                     f"   STAFF ONBOARDING COMPLETED!\n"
                     f"   Staff: {staff.name}\n"
                     f"   Org: {org.name}\n"
                     f"   Duration: {elapsed_ms:.0f}ms\n"
-                    f"{'🎉'*20}"
+                    f"{'🎉' * 20}"
                 )
 
                 # Notify owner that staff completed onboarding
@@ -535,7 +609,7 @@ class StaffOnboardingHandler:
             f"• Ver su agenda\n"
             f"• Bloquear horarios\n"
             f"• Registrar clientes sin cita\n\n"
-            f"Ya puede empezar a recibir citas."
+            f"Ya puede gestionar su agenda por WhatsApp."
         )
 
         # Send notification to each owner
@@ -545,7 +619,9 @@ class StaffOnboardingHandler:
         try:
             for owner in owners:
                 if owner.phone_number:
-                    logger.info(f"Notifying owner {owner.name} ({owner.phone_number}) about {staff.name}'s onboarding")
+                    logger.info(
+                        f"Notifying owner {owner.name} ({owner.phone_number}) about {staff.name}'s onboarding"
+                    )
                     try:
                         from_number = resolve_whatsapp_sender(org) or org.whatsapp_phone_number_id
                         await whatsapp.send_text_message(

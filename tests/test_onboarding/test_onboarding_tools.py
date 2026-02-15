@@ -4,12 +4,12 @@ Tests individual tools in the OnboardingHandler._execute_tool method.
 Updated to use Organization-based onboarding (no OnboardingSession).
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from app.models import Organization, OrganizationStatus
-from app.services.onboarding import OnboardingHandler, OnboardingState
+import pytest
 
+from app.models import OrganizationStatus
+from app.services.onboarding import OnboardingHandler, OnboardingState
 
 pytestmark = pytest.mark.asyncio
 
@@ -17,9 +17,7 @@ pytestmark = pytest.mark.asyncio
 class TestSaveBusinessInfoTool:
     """Tests for save_business_info tool."""
 
-    async def test_saves_basic_business_info(
-        self, db, onboarding_session_initiated
-    ):
+    async def test_saves_basic_business_info(self, db, onboarding_session_initiated):
         """save_business_info stores business name, type, and owner."""
         org = onboarding_session_initiated  # This is now an Organization
         handler = OnboardingHandler(db=db)
@@ -46,9 +44,7 @@ class TestSaveBusinessInfoTool:
         # Also verify org.name was updated
         assert org.name == "Salón Bella"
 
-    async def test_saves_optional_address_and_city(
-        self, db, onboarding_session_initiated
-    ):
+    async def test_saves_optional_address_and_city(self, db, onboarding_session_initiated):
         """save_business_info stores optional address and city."""
         org = onboarding_session_initiated
         handler = OnboardingHandler(db=db)
@@ -71,9 +67,7 @@ class TestSaveBusinessInfoTool:
         assert org.onboarding_data["address"] == "Av. Reforma 123"
         assert org.onboarding_data["city"] == "CDMX"
 
-    async def test_transitions_state_to_collecting_services(
-        self, db, onboarding_session_initiated
-    ):
+    async def test_transitions_state_to_collecting_services(self, db, onboarding_session_initiated):
         """save_business_info transitions state to COLLECTING_SERVICES."""
         org = onboarding_session_initiated
         handler = OnboardingHandler(db=db)
@@ -95,9 +89,7 @@ class TestSaveBusinessInfoTool:
 class TestAddServiceTool:
     """Tests for add_service tool."""
 
-    async def test_adds_first_service(
-        self, db, onboarding_session_collecting_services
-    ):
+    async def test_adds_first_service(self, db, onboarding_session_collecting_services):
         """add_service creates services array and adds first service."""
         org = onboarding_session_collecting_services
         handler = OnboardingHandler(db=db)
@@ -120,9 +112,7 @@ class TestAddServiceTool:
         assert len(org.onboarding_data["services"]) == 1
         assert org.onboarding_data["services"][0]["name"] == "Corte de cabello"
 
-    async def test_adds_multiple_services(
-        self, db, onboarding_session_collecting_services
-    ):
+    async def test_adds_multiple_services(self, db, onboarding_session_collecting_services):
         """add_service accumulates services."""
         org = onboarding_session_collecting_services
         handler = OnboardingHandler(db=db)
@@ -170,9 +160,7 @@ class TestCompleteOnboardingTool:
         assert org.status == OrganizationStatus.ACTIVE.value
         assert org.onboarding_state == OnboardingState.COMPLETED
 
-    async def test_requires_confirmation(
-        self, db, onboarding_org_ready_for_completion
-    ):
+    async def test_requires_confirmation(self, db, onboarding_org_ready_for_completion):
         """complete_onboarding requires confirmed=True."""
         org = onboarding_org_ready_for_completion
         handler = OnboardingHandler(db=db)
@@ -188,9 +176,7 @@ class TestCompleteOnboardingTool:
         await db.refresh(org)
         assert org.status == OrganizationStatus.ONBOARDING.value
 
-    async def test_requires_business_name(
-        self, db, onboarding_session_initiated
-    ):
+    async def test_requires_business_name(self, db, onboarding_session_initiated):
         """complete_onboarding fails without business name."""
         org = onboarding_session_initiated
         handler = OnboardingHandler(db=db)
@@ -204,9 +190,7 @@ class TestCompleteOnboardingTool:
         assert result["success"] is False
         assert "nombre del negocio" in result["error"].lower()
 
-    async def test_requires_at_least_one_service(
-        self, db, onboarding_session_collecting_services
-    ):
+    async def test_requires_at_least_one_service(self, db, onboarding_session_collecting_services):
         """complete_onboarding fails without services."""
         org = onboarding_session_collecting_services
         handler = OnboardingHandler(db=db)
@@ -224,9 +208,7 @@ class TestCompleteOnboardingTool:
 class TestProvisionTwilioNumberTool:
     """Tests for provision_twilio_number tool."""
 
-    async def test_provisions_twilio_number(
-        self, db, onboarding_org_with_services
-    ):
+    async def test_provisions_twilio_number(self, db, onboarding_org_with_services):
         """provision_twilio_number stores provisioned number in onboarding_data."""
         org = onboarding_org_with_services
         handler = OnboardingHandler(db=db)

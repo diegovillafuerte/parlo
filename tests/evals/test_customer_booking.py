@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models import Appointment, AppointmentStatus
-from tests.evals.conftest import simulate_message, get_tool_calls
+from tests.evals.conftest import simulate_message
 from tests.evals.seed_helpers import seed_active_business
 
 
@@ -24,7 +24,9 @@ async def test_customer_booking_happy_path(eval_db):
 
     # Message 1: Customer initiates
     result1, _ = await simulate_message(
-        eval_db, customer_phone, business_number,
+        eval_db,
+        customer_phone,
+        business_number,
         "Hola, quiero agendar un corte de cabello para manana en la manana",
         sender_name="Test Customer",
     )
@@ -34,7 +36,9 @@ async def test_customer_booking_happy_path(eval_db):
     # The AI may book directly or ask for confirmation.
     # Send a follow-up agreeing to whatever time was suggested.
     result2, corr2 = await simulate_message(
-        eval_db, customer_phone, business_number,
+        eval_db,
+        customer_phone,
+        business_number,
         "Si, esa hora esta bien, por favor agenda la cita",
     )
     assert result2["status"] == "success"
@@ -43,10 +47,12 @@ async def test_customer_booking_happy_path(eval_db):
     apt_result = await eval_db.execute(
         select(Appointment).where(
             Appointment.organization_id == org.id,
-            Appointment.status.in_([
-                AppointmentStatus.CONFIRMED.value,
-                AppointmentStatus.PENDING.value,
-            ]),
+            Appointment.status.in_(
+                [
+                    AppointmentStatus.CONFIRMED.value,
+                    AppointmentStatus.PENDING.value,
+                ]
+            ),
         )
     )
     appointments = apt_result.scalars().all()
@@ -54,7 +60,9 @@ async def test_customer_booking_happy_path(eval_db):
     # If not booked yet, send one more confirmation
     if not appointments:
         result3, corr3 = await simulate_message(
-            eval_db, customer_phone, business_number,
+            eval_db,
+            customer_phone,
+            business_number,
             "Si confirmo, quiero la cita",
         )
         assert result3["status"] == "success"
@@ -62,10 +70,12 @@ async def test_customer_booking_happy_path(eval_db):
         apt_result = await eval_db.execute(
             select(Appointment).where(
                 Appointment.organization_id == org.id,
-                Appointment.status.in_([
-                    AppointmentStatus.CONFIRMED.value,
-                    AppointmentStatus.PENDING.value,
-                ]),
+                Appointment.status.in_(
+                    [
+                        AppointmentStatus.CONFIRMED.value,
+                        AppointmentStatus.PENDING.value,
+                    ]
+                ),
             )
         )
         appointments = apt_result.scalars().all()

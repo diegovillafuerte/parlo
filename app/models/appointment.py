@@ -15,9 +15,9 @@ if TYPE_CHECKING:
     from app.models.end_customer import EndCustomer
     from app.models.location import Location
     from app.models.organization import Organization
+    from app.models.parlo_user import ParloUser
     from app.models.service_type import ServiceType
     from app.models.spot import Spot
-    from app.models.parlo_user import ParloUser
 
 
 class AppointmentStatus(str, Enum):
@@ -100,9 +100,7 @@ class Appointment(Base, UUIDMixin, TimestampMixin):
     parlo_user: Mapped["ParloUser | None"] = relationship(
         "ParloUser", back_populates="appointments", foreign_keys=[parlo_user_id]
     )
-    service_type: Mapped["ServiceType"] = relationship(
-        "ServiceType", back_populates="appointments"
-    )
+    service_type: Mapped["ServiceType"] = relationship("ServiceType", back_populates="appointments")
     spot: Mapped["Spot | None"] = relationship("Spot", back_populates="appointments")
 
     def __repr__(self) -> str:

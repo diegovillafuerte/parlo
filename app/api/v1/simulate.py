@@ -47,7 +47,7 @@ async def simulate_message(
     but with WhatsApp in mock mode so no real messages are sent.
     """
     message_id = f"sim_{uuid4().hex[:16]}"
-    correlation_id = start_trace_context(phone_number=request.sender_phone)
+    start_trace_context(phone_number=request.sender_phone)
 
     try:
         whatsapp_client = WhatsAppClient(mock_mode=True)

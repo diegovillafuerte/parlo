@@ -20,15 +20,13 @@ See docs/PROJECT_SPEC.md for the full routing decision tree and state machines.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.services.tracing import traced, set_organization_id
 from app.models import (
     Conversation,
     ConversationStatus,
@@ -46,8 +44,9 @@ from app.services import organization as org_service
 from app.services import staff as staff_service
 from app.services.conversation import ConversationHandler
 from app.services.customer_flows import CustomerFlowHandler
-from app.services.onboarding import OnboardingHandler, OnboardingState
+from app.services.onboarding import OnboardingHandler
 from app.services.staff_onboarding import StaffOnboardingHandler
+from app.services.tracing import traced
 from app.services.whatsapp import WhatsAppClient, resolve_whatsapp_sender
 
 logger = logging.getLogger(__name__)
@@ -58,9 +57,7 @@ MULTI_BUSINESS_REDIRECT_MESSAGE = """¡Hola! Veo que estás registrado en más d
 
 {business_list}
 
-Para gestionar tu agenda, escribe directamente al número de WhatsApp del negocio que quieras administrar.
-
-Si necesitas ayuda, escríbenos a soporte@parlo.mx"""
+Para gestionar tu agenda, escribe directamente al número de WhatsApp del negocio que quieras administrar."""
 
 
 def _build_onboarding_completion_message(org: Organization) -> str:
@@ -78,7 +75,9 @@ def _build_onboarding_completion_message(org: Organization) -> str:
     provisioned_number = org_settings.get("twilio_phone_number")
 
     if provisioned_number:
-        number_section = f"\U0001f4f1 N\u00famero de WhatsApp para tus clientes:\n{provisioned_number}"
+        number_section = (
+            f"\U0001f4f1 N\u00famero de WhatsApp para tus clientes:\n{provisioned_number}"
+        )
     else:
         number_section = (
             "\U0001f4f1 Tu n\u00famero de WhatsApp:\n"
@@ -92,12 +91,12 @@ def _build_onboarding_completion_message(org: Organization) -> str:
         f"\n"
         f"{number_section}\n"
         f"\n"
-        f"\U0001f4bb Tu portal de administraci\u00f3n:\n"
+        f"\U0001f4bb Tu panel de control:\n"
         f"{dashboard_url}\n"
         f"(Inicia sesi\u00f3n con tu n\u00famero de WhatsApp, sin contrase\u00f1a)\n"
         f"\n"
-        f"Tus clientes pueden escribir a tu n\u00famero de WhatsApp para "
-        f"agendar citas autom\u00e1ticamente. \u00a1\u00c9xito!"
+        f"Comparte este n\u00famero con tus clientes (en Instagram, tarjetas, tu local) "
+        f"para que empiecen a agendar autom\u00e1ticamente. \u00a1\u00c9xito!"
     )
 
 
@@ -150,14 +149,14 @@ class MessageRouter:
             Dict with routing decision and status
         """
         logger.info(
-            f"\n{'='*80}\n"
+            f"\n{'=' * 80}\n"
             f"📨 INCOMING MESSAGE\n"
-            f"{'='*80}\n"
+            f"{'=' * 80}\n"
             f"  WhatsApp Number ID: {phone_number_id}\n"
             f"  Sender: {sender_phone} ({sender_name or 'Unknown'})\n"
             f"  Message ID: {message_id}\n"
             f"  Content: {message_content[:100]}{'...' if len(message_content) > 100 else ''}\n"
-            f"{'='*80}"
+            f"{'=' * 80}"
         )
 
         # Step 1: Check message deduplication
@@ -215,9 +214,7 @@ class MessageRouter:
             Dict with routing decision and status
         """
         # Get ALL staff registrations for this phone number
-        registrations = await staff_service.get_all_staff_registrations(
-            self.db, sender_phone
-        )
+        registrations = await staff_service.get_all_staff_registrations(self.db, sender_phone)
 
         if len(registrations) == 0:
             # CASE 1: Unknown sender → Business Onboarding
@@ -271,7 +268,7 @@ class MessageRouter:
                 # Check if onboarding just completed
                 await self.db.refresh(org)
                 if org.status == OrganizationStatus.ACTIVE.value:
-                    logger.info(f"   🎉 Onboarding completed! Organization activated.")
+                    logger.info("   🎉 Onboarding completed! Organization activated.")
                     response_text = _build_onboarding_completion_message(org)
 
                 await self._send_response(
@@ -329,7 +326,13 @@ class MessageRouter:
 
         else:
             # CASE 2b: Staff of multiple businesses → Redirect Message
-            business_names = [f"• {org.name}" for _, org in registrations]
+            business_names = []
+            for _, org in registrations:
+                phone = (org.settings or {}).get("twilio_phone_number", "")
+                if phone:
+                    business_names.append(f"• {org.name}: {phone}")
+                else:
+                    business_names.append(f"• {org.name}")
             logger.info(
                 f"\n🟡 CASE 2b: MULTI-BUSINESS REDIRECT\n"
                 f"   Staff registered at {len(registrations)} businesses\n"
@@ -415,8 +418,9 @@ class MessageRouter:
                 # CASE 4: Known staff → Check for pending onboarding OR Business Management
                 # First check if there's a pending staff onboarding session
                 staff_onboarding_handler = StaffOnboardingHandler(db=self.db)
-                from app.models import StaffOnboardingSession, StaffOnboardingState
                 from sqlalchemy import select
+
+                from app.models import StaffOnboardingSession, StaffOnboardingState
 
                 result = await self.db.execute(
                     select(StaffOnboardingSession).where(
@@ -454,9 +458,9 @@ class MessageRouter:
                         )
                     else:
                         # Use existing staff conversation
-                        conversation_id = (await self._get_or_create_staff_conversation(
-                            org.id, staff.id
-                        )).id
+                        conversation_id = (
+                            await self._get_or_create_staff_conversation(org.id, staff.id)
+                        ).id
                 else:
                     # Check if this staff member has an active handoff
                     from app.services import handoff as handoff_service
@@ -544,7 +548,7 @@ class MessageRouter:
             if customer_conversation.status == ConversationStatus.HANDED_OFF.value:
                 from app.services import handoff as handoff_service
 
-                logger.info(f"   🔀 Customer message during handoff → relaying to owner")
+                logger.info("   🔀 Customer message during handoff → relaying to owner")
 
                 # Store inbound message
                 await self._store_message(
@@ -570,7 +574,7 @@ class MessageRouter:
                     "sender_type": MessageSenderType.CUSTOMER.value,
                     "organization_id": str(org.id),
                     "route": "handoff_relay",
-                    "response_text": f"[Relayed to owner]",
+                    "response_text": "[Relayed to owner]",
                 }
 
             response_text, conversation_id = await self._handle_end_customer(
@@ -649,13 +653,13 @@ class MessageRouter:
             sender_name=sender_name,
         )
 
-        logger.info(f"   Organization state: status={org.status}, onboarding_state={org.onboarding_state}")
+        logger.info(
+            f"   Organization state: status={org.status}, onboarding_state={org.onboarding_state}"
+        )
 
         # Check if onboarding was already completed - redirect to business management
         if org.status == OrganizationStatus.ACTIVE.value:
-            staff = await staff_service.get_staff_by_phone(
-                self.db, org.id, sender_phone
-            )
+            staff = await staff_service.get_staff_by_phone(self.db, org.id, sender_phone)
             if staff:
                 logger.info(
                     f"   Onboarding already complete, redirecting to business management for {org.name}"
@@ -677,7 +681,7 @@ class MessageRouter:
         # Check if onboarding just completed
         await self.db.refresh(org)
         if org.status == OrganizationStatus.ACTIVE.value:
-            logger.info(f"   🎉 Onboarding completed! Organization activated.")
+            logger.info("   🎉 Onboarding completed! Organization activated.")
             response = _build_onboarding_completion_message(org)
 
         return response
@@ -782,7 +786,7 @@ class MessageRouter:
         Returns:
             Tuple of (response text, conversation id)
         """
-        logger.info(f"   Processing business management message with AI handler")
+        logger.info("   Processing business management message with AI handler")
 
         conversation = await self._get_or_create_staff_conversation(org.id, staff.id)
 
@@ -837,7 +841,7 @@ class MessageRouter:
         Returns:
             Tuple of (response text, conversation id)
         """
-        logger.info(f"   Processing end customer message with CustomerFlowHandler")
+        logger.info("   Processing end customer message with CustomerFlowHandler")
 
         # Get or create conversation
         conversation = await self._get_or_create_conversation(org.id, customer.id)
@@ -870,9 +874,7 @@ class MessageRouter:
     # Helper methods
     # ==========================================================================
 
-    async def _find_org_by_whatsapp_phone_id(
-        self, phone_number_id: str
-    ) -> Organization | None:
+    async def _find_org_by_whatsapp_phone_id(self, phone_number_id: str) -> Organization | None:
         """Find organization by WhatsApp phone number ID or business phone number.
 
         Args:
@@ -881,9 +883,7 @@ class MessageRouter:
         Returns:
             Organization or None
         """
-        return await org_service.get_organization_by_whatsapp_phone_id(
-            self.db, phone_number_id
-        )
+        return await org_service.get_organization_by_whatsapp_phone_id(self.db, phone_number_id)
 
     async def _message_already_processed(self, message_id: str) -> bool:
         """Check if message was already processed (deduplication).
@@ -946,17 +946,19 @@ class MessageRouter:
             select(Conversation).where(
                 Conversation.organization_id == organization_id,
                 Conversation.end_customer_id == customer_id,
-                Conversation.status.in_([
-                    ConversationStatus.ACTIVE.value,
-                    ConversationStatus.HANDED_OFF.value,
-                ]),
+                Conversation.status.in_(
+                    [
+                        ConversationStatus.ACTIVE.value,
+                        ConversationStatus.HANDED_OFF.value,
+                    ]
+                ),
             )
         )
         conversation = result.scalar_one_or_none()
 
         if conversation:
             # Update last message time
-            conversation.last_message_at = datetime.now(timezone.utc)
+            conversation.last_message_at = datetime.now(UTC)
             return conversation
 
         # Create new conversation
@@ -965,7 +967,7 @@ class MessageRouter:
             end_customer_id=customer_id,
             status=ConversationStatus.ACTIVE.value,
             context={},
-            last_message_at=datetime.now(timezone.utc),
+            last_message_at=datetime.now(UTC),
         )
         self.db.add(conversation)
         await self.db.flush()
@@ -991,7 +993,7 @@ class MessageRouter:
         conversation = result.scalar_one_or_none()
 
         if conversation:
-            conversation.last_message_at = datetime.now(timezone.utc)
+            conversation.last_message_at = datetime.now(UTC)
             return conversation
 
         conversation = Conversation(
@@ -999,7 +1001,7 @@ class MessageRouter:
             end_customer_id=None,
             status=ConversationStatus.ACTIVE.value,
             context={"type": "staff", "parlo_user_id": str(staff_id)},
-            last_message_at=datetime.now(timezone.utc),
+            last_message_at=datetime.now(UTC),
         )
         self.db.add(conversation)
         await self.db.flush()

@@ -12,7 +12,9 @@ from app.schemas.service_type import ServiceTypeSummary
 class SpotBase(BaseModel):
     """Base spot schema with common fields."""
 
-    name: str = Field(..., min_length=1, max_length=100, description="Spot name (e.g., 'Silla 1', 'Mesa 2')")
+    name: str = Field(
+        ..., min_length=1, max_length=100, description="Spot name (e.g., 'Silla 1', 'Mesa 2')"
+    )
     description: str | None = Field(None, description="Spot description")
     is_active: bool = Field(default=True, description="Is the spot active")
     display_order: int = Field(default=0, description="Order for display in UI")
@@ -52,6 +54,8 @@ class SpotResponse(SpotBase):
     location_id: UUID
     created_at: datetime
     updated_at: datetime
-    service_types: list[ServiceTypeSummary] = Field(default_factory=list, description="Services that can be performed at this spot")
+    service_types: list[ServiceTypeSummary] = Field(
+        default_factory=list, description="Services that can be performed at this spot"
+    )
 
     model_config = ConfigDict(from_attributes=True)

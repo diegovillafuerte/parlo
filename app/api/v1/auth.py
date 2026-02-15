@@ -57,10 +57,10 @@ async def request_magic_link(
     # For now, log it (in development mode)
     if settings.is_development:
         logger.info(f"Magic link for {organization.name}: {magic_link_url}")
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"MAGIC LINK for {organization.name}:")
         print(f"{magic_link_url}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
     else:
         # TODO: Send via WhatsApp API
         # await whatsapp_service.send_magic_link(organization, magic_link_url)

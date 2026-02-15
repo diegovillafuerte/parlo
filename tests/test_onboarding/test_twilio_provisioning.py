@@ -3,16 +3,15 @@
 Tests for TwilioProvisioningService with the Senders API and fallback strategy.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 from app.services.twilio_provisioning import (
     TwilioProvisioningService,
-    TwilioProvisioningError,
     provision_number_for_business,
 )
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -95,9 +94,7 @@ class TestListAvailableNumbers:
             }
             mock_response.raise_for_status = MagicMock()
 
-            with patch.object(
-                service.client, "get", new_callable=AsyncMock
-            ) as mock_get:
+            with patch.object(service.client, "get", new_callable=AsyncMock) as mock_get:
                 mock_get.return_value = mock_response
 
                 numbers = await service.list_available_numbers(country_code="MX", limit=5)
@@ -130,9 +127,7 @@ class TestListAvailableNumbers:
 
             service = TwilioProvisioningService()
 
-            with patch.object(
-                service.client, "get", new_callable=AsyncMock
-            ) as mock_get:
+            with patch.object(service.client, "get", new_callable=AsyncMock) as mock_get:
                 mock_get.side_effect = httpx.HTTPError("Connection error")
 
                 numbers = await service.list_available_numbers()
@@ -153,9 +148,7 @@ class TestListAvailableNumbers:
             mock_response.json.return_value = {"available_phone_numbers": []}
             mock_response.raise_for_status = MagicMock()
 
-            with patch.object(
-                service.client, "get", new_callable=AsyncMock
-            ) as mock_get:
+            with patch.object(service.client, "get", new_callable=AsyncMock) as mock_get:
                 mock_get.return_value = mock_response
 
                 await service.list_available_numbers(country_code="MX", area_code="55")
@@ -187,9 +180,7 @@ class TestPurchaseNumber:
             }
             mock_response.raise_for_status = MagicMock()
 
-            with patch.object(
-                service.client, "post", new_callable=AsyncMock
-            ) as mock_post:
+            with patch.object(service.client, "post", new_callable=AsyncMock) as mock_post:
                 mock_post.return_value = mock_response
 
                 result = await service.purchase_number(
@@ -225,9 +216,7 @@ class TestPurchaseNumber:
 
             service = TwilioProvisioningService()
 
-            with patch.object(
-                service.client, "post", new_callable=AsyncMock
-            ) as mock_post:
+            with patch.object(service.client, "post", new_callable=AsyncMock) as mock_post:
                 mock_post.side_effect = httpx.HTTPError("Purchase failed")
 
                 result = await service.purchase_number("+525512345678")
@@ -256,9 +245,7 @@ class TestRegisterWhatsAppSender:
             }
             mock_response.raise_for_status = MagicMock()
 
-            with patch.object(
-                service.client, "post", new_callable=AsyncMock
-            ) as mock_post:
+            with patch.object(service.client, "post", new_callable=AsyncMock) as mock_post:
                 mock_post.return_value = mock_response
 
                 result = await service.register_whatsapp_sender(
@@ -301,9 +288,7 @@ class TestRegisterWhatsAppSender:
 
             service = TwilioProvisioningService()
 
-            with patch.object(
-                service.client, "post", new_callable=AsyncMock
-            ) as mock_post:
+            with patch.object(service.client, "post", new_callable=AsyncMock) as mock_post:
                 mock_post.side_effect = httpx.HTTPError("API error")
 
                 result = await service.register_whatsapp_sender(
@@ -335,9 +320,7 @@ class TestGetSenderStatus:
             }
             mock_response.raise_for_status = MagicMock()
 
-            with patch.object(
-                service.client, "get", new_callable=AsyncMock
-            ) as mock_get:
+            with patch.object(service.client, "get", new_callable=AsyncMock) as mock_get:
                 mock_get.return_value = mock_response
 
                 result = await service.get_sender_status("XE123456789")
@@ -355,9 +338,7 @@ class TestGetSenderStatus:
 
             service = TwilioProvisioningService()
 
-            with patch.object(
-                service.client, "get", new_callable=AsyncMock
-            ) as mock_get:
+            with patch.object(service.client, "get", new_callable=AsyncMock) as mock_get:
                 mock_get.side_effect = httpx.HTTPError("Not found")
 
                 result = await service.get_sender_status("XE123456789")
@@ -381,9 +362,7 @@ class TestReleaseNumber:
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
 
-            with patch.object(
-                service.client, "delete", new_callable=AsyncMock
-            ) as mock_delete:
+            with patch.object(service.client, "delete", new_callable=AsyncMock) as mock_delete:
                 mock_delete.return_value = mock_response
 
                 result = await service.release_number("PN123456")
@@ -402,9 +381,7 @@ class TestReleaseNumber:
 
             service = TwilioProvisioningService()
 
-            with patch.object(
-                service.client, "delete", new_callable=AsyncMock
-            ) as mock_delete:
+            with patch.object(service.client, "delete", new_callable=AsyncMock) as mock_delete:
                 mock_delete.side_effect = httpx.HTTPError("Delete failed")
 
                 result = await service.release_number("PN123456")
@@ -418,9 +395,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_provisions_complete_flow_with_sender(self):
         """Lists, purchases, registers sender in one call."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.is_whatsapp_configured = True
             mock_instance.list_available_numbers = AsyncMock(
@@ -459,9 +434,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_provisions_without_waba_configured(self):
         """Provisions number without sender registration when WABA not configured."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.is_whatsapp_configured = False  # WABA not configured
             mock_instance.list_available_numbers = AsyncMock(
@@ -489,9 +462,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_rollback_on_sender_registration_failure(self):
         """Releases purchased number if sender registration fails."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.is_whatsapp_configured = True
             mock_instance.list_available_numbers = AsyncMock(
@@ -523,9 +494,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_returns_none_when_no_numbers_available(self):
         """Returns None if no numbers available."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.list_available_numbers = AsyncMock(return_value=[])
             mock_instance.close = AsyncMock()
@@ -540,9 +509,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_returns_none_on_purchase_failure(self):
         """Returns None if purchase fails."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.list_available_numbers = AsyncMock(
                 return_value=[{"phone_number": "+525512345678"}]
@@ -560,9 +527,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_webhook_url_format_correct(self):
         """Webhook URL follows pattern: {base}/api/v1/webhooks/whatsapp."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.is_whatsapp_configured = False
             mock_instance.list_available_numbers = AsyncMock(
@@ -585,13 +550,13 @@ class TestProvisionNumberForBusiness:
 
             # Verify webhook URL format
             purchase_call = mock_instance.purchase_number.call_args
-            assert purchase_call[1]["webhook_url"] == "https://api.parlo.mx/api/v1/webhooks/whatsapp"
+            assert (
+                purchase_call[1]["webhook_url"] == "https://api.parlo.mx/api/v1/webhooks/whatsapp"
+            )
 
     async def test_friendly_name_includes_business_name(self):
         """Friendly name includes 'Parlo - {business_name}'."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.is_whatsapp_configured = False
             mock_instance.list_available_numbers = AsyncMock(
@@ -618,9 +583,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_closes_service_on_success(self):
         """Service is closed after successful provisioning."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.is_whatsapp_configured = False
             mock_instance.list_available_numbers = AsyncMock(
@@ -641,9 +604,7 @@ class TestProvisionNumberForBusiness:
 
     async def test_closes_service_on_failure(self):
         """Service is closed even when provisioning fails."""
-        with patch(
-            "app.services.twilio_provisioning.TwilioProvisioningService"
-        ) as MockService:
+        with patch("app.services.twilio_provisioning.TwilioProvisioningService") as MockService:
             mock_instance = MagicMock()
             mock_instance.list_available_numbers = AsyncMock(return_value=[])
             mock_instance.close = AsyncMock()

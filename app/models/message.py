@@ -51,12 +51,8 @@ class Message(Base, UUIDMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
 
-    direction: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )
-    sender_type: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )
+    direction: Mapped[str] = mapped_column(String(20), nullable=False)
+    sender_type: Mapped[str] = mapped_column(String(20), nullable=False)
 
     content_type: Mapped[str] = mapped_column(
         String(20),
@@ -66,9 +62,7 @@ class Message(Base, UUIDMixin, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)  # Message body
     media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    whatsapp_message_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
-    )
+    whatsapp_message_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
 
     # Relationships
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")

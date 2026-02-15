@@ -3,11 +3,51 @@
 All prompts are in Mexican Spanish, using natural "tú" form.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.models import EndCustomer, Organization, ServiceType, ParloUser
+from app.models import EndCustomer, Organization, ParloUser, ServiceType
+
+
+def format_date_spanish(dt: datetime) -> str:
+    """Format a datetime into Spanish date string.
+
+    Args:
+        dt: Datetime to format (should already be in local timezone)
+
+    Returns:
+        Formatted string like "viernes 15 de enero, 03:00 PM"
+    """
+    date_str = dt.strftime("%A %d de %B, %I:%M %p")
+    day_translations = {
+        "Monday": "lunes",
+        "Tuesday": "martes",
+        "Wednesday": "miércoles",
+        "Thursday": "jueves",
+        "Friday": "viernes",
+        "Saturday": "sábado",
+        "Sunday": "domingo",
+    }
+    month_translations = {
+        "January": "enero",
+        "February": "febrero",
+        "March": "marzo",
+        "April": "abril",
+        "May": "mayo",
+        "June": "junio",
+        "July": "julio",
+        "August": "agosto",
+        "September": "septiembre",
+        "October": "octubre",
+        "November": "noviembre",
+        "December": "diciembre",
+    }
+    for eng, esp in day_translations.items():
+        date_str = date_str.replace(eng, esp)
+    for eng, esp in month_translations.items():
+        date_str = date_str.replace(eng, esp)
+    return date_str
 
 
 def format_services(services: list[ServiceType]) -> str:
@@ -45,8 +85,12 @@ def format_business_hours(business_hours: dict | None) -> str:
         return "Horario no configurado"
 
     day_names = {
-        "monday": "Lunes", "tuesday": "Martes", "wednesday": "Miércoles",
-        "thursday": "Jueves", "friday": "Viernes", "saturday": "Sábado",
+        "monday": "Lunes",
+        "tuesday": "Martes",
+        "wednesday": "Miércoles",
+        "thursday": "Jueves",
+        "friday": "Viernes",
+        "saturday": "Sábado",
         "sunday": "Domingo",
     }
     day_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -94,9 +138,9 @@ def format_staff_permissions(staff: ParloUser) -> str:
     Returns:
         Formatted permissions string describing what the staff can do
     """
-    level = getattr(staff, 'permission_level', 'staff')
+    level = getattr(staff, "permission_level", "staff")
 
-    if level == 'owner':
+    if level == "owner":
         return """Dueño - Acceso completo:
     ✓ Ver agenda propia y del negocio
     ✓ Agendar citas y walk-ins
@@ -104,14 +148,14 @@ def format_staff_permissions(staff: ParloUser) -> str:
     ✓ Ver estadísticas del negocio
     ✓ Agregar/remover empleados
     ✓ Cambiar permisos de empleados"""
-    elif level == 'admin':
+    elif level == "admin":
         return """Administrador:
     ✓ Ver agenda propia y del negocio
     ✓ Agendar citas y walk-ins
     ✓ Bloquear tiempo
     ✓ Ver estadísticas del negocio
     ✓ Agregar/remover empleados"""
-    elif level == 'viewer':
+    elif level == "viewer":
         return """Visualizador (solo lectura):
     ✓ Ver agenda propia
     ✓ Ver agenda del negocio"""
@@ -147,15 +191,11 @@ def build_customer_system_prompt(
         System prompt string
     """
     org_tz = ZoneInfo(org.timezone) if org.timezone else ZoneInfo("America/Mexico_City")
-    current_time = current_time or datetime.now(timezone.utc)
+    current_time = current_time or datetime.now(UTC)
     current_local = current_time.astimezone(org_tz) if current_time.tzinfo else datetime.now(org_tz)
     time_str = current_local.strftime("%A %d de %B, %Y a las %I:%M %p")
 
-    # Format staff list if available
-    staff_info = ""
-    # Note: Staff info should be loaded and passed here if we want to show it
-
-    return f"""Eres Parlo, la asistente virtual de {org.name}. Tu trabajo es ayudar a los clientes a agendar citas de manera rápida y amable.
+    return f"""Eres la asistente virtual de {org.name}. Tu trabajo es ayudar a los clientes a agendar citas de manera rápida y amable.
 
 ## Fecha y Hora Actual
 {time_str} (Zona horaria: {org.timezone})
@@ -179,7 +219,7 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 ## Flujo de Conversación
 
 ### 1. Saludo inicial (SOLO si es el primer mensaje)
-- Si el cliente dice "Hola" o similar: "¡Hola! ¿Qué servicio te gustaría agendar?"
+- Si el cliente dice "Hola" o similar: "¡Hola! Soy la asistente virtual de {org.name}. ¿En qué te puedo ayudar?"
 - Si ya dice qué quiere: Procede directamente
 
 ### 2. Identificar servicio
@@ -203,7 +243,8 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 ### 5. Confirmar y agendar
 - Confirma: servicio, fecha, hora
 - Usa book_appointment
-- Da confirmación clara con todos los detalles
+- Da confirmación clara con todos los detalles incluyendo el nombre del negocio
+- Incluye: "Si necesitas cancelar o cambiar, escríbenos aquí"
 
 ## Instrucciones Clave
 1. Sé concisa. Máximo 2-3 oraciones por mensaje.
@@ -245,10 +286,10 @@ Agendar citas de forma rápida y eficiente. Los clientes quieren terminar en men
 - Máximo 3-4 oraciones por respuesta.
 
 ## Ejemplos de Respuestas
-- "¡Hola! ¿Qué servicio te gustaría agendar?"
+- "¡Hola! Soy la asistente virtual de {org.name}. ¿En qué te puedo ayudar?"
 - "¿Para qué día?"
 - "Tengo disponible mañana a las 10 AM, 2 PM y 4 PM. ¿Cuál prefieres?"
-- "Perfecto, quedó tu cita para corte mañana viernes a las 2 PM. ¡Te esperamos!"
+- "Perfecto, quedó tu cita para corte mañana viernes a las 2 PM en {org.name}. Si necesitas cancelar o cambiar, escríbenos aquí. ¡Te esperamos!"
 - "No tengo horarios el viernes, ¿te sirve el sábado?"
 """
 
@@ -275,7 +316,7 @@ def build_staff_system_prompt(
         System prompt string
     """
     org_tz = ZoneInfo(org.timezone) if org.timezone else ZoneInfo("America/Mexico_City")
-    current_time = current_time or datetime.now(timezone.utc)
+    current_time = current_time or datetime.now(UTC)
     current_local = current_time.astimezone(org_tz) if current_time.tzinfo else datetime.now(org_tz)
     time_str = current_local.strftime("%A %d de %B, %Y a las %I:%M %p")
     today_date = current_local.strftime("%Y-%m-%d")

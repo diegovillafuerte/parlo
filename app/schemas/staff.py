@@ -17,9 +17,7 @@ class StaffBase(BaseModel):
     phone_number: str = Field(
         ..., description="Personal WhatsApp number - used to identify them as staff"
     )
-    role: str = Field(
-        default="employee", description="Role: owner or employee"
-    )
+    role: str = Field(default="employee", description="Role: owner or employee")
     permissions: dict[str, Any] = Field(
         default_factory=dict,
         description="Permissions: {can_view_schedule: true, can_book: true, ...}",
@@ -32,7 +30,9 @@ class StaffCreate(StaffBase):
     """Schema for creating a new staff member."""
 
     location_id: UUID | None = Field(None, description="Location ID (null = all locations)")
-    default_spot_id: UUID | None = Field(None, description="Default spot/station ID for this staff member")
+    default_spot_id: UUID | None = Field(
+        None, description="Default spot/station ID for this staff member"
+    )
     settings: dict[str, Any] = Field(default_factory=dict, description="Staff settings")
 
 
@@ -56,7 +56,9 @@ class StaffUpdate(BaseModel):
 class StaffServiceAssignment(BaseModel):
     """Schema for assigning services to a staff member."""
 
-    service_type_ids: list[UUID] = Field(..., description="List of service type IDs this staff can perform")
+    service_type_ids: list[UUID] = Field(
+        ..., description="List of service type IDs this staff can perform"
+    )
 
 
 # Response schema
@@ -70,6 +72,8 @@ class StaffResponse(StaffBase):
     settings: dict[str, Any]
     created_at: datetime
     updated_at: datetime
-    service_types: list[ServiceTypeSummary] = Field(default_factory=list, description="Services this staff member can perform")
+    service_types: list[ServiceTypeSummary] = Field(
+        default_factory=list, description="Services this staff member can perform"
+    )
 
     model_config = ConfigDict(from_attributes=True)

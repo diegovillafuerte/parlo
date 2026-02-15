@@ -233,6 +233,7 @@ interface ViewProps {
   actionLoading: string | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CalendarView({ date, appointments, staff, onCancel, onComplete, onNoShow, actionLoading }: ViewProps & { date: Date }) {
   // Generate time slots from 8 AM to 8 PM
   const timeSlots = Array.from({ length: 13 }, (_, i) => {

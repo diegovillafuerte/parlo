@@ -1,16 +1,14 @@
 """Scheduling service - availability calculation and appointment management."""
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.tracing import traced
 from app.models import (
     Appointment,
-    AppointmentSource,
     AppointmentStatus,
     Availability,
     AvailabilityType,
@@ -20,6 +18,7 @@ from app.models import (
 )
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate
 from app.schemas.availability import AvailableSlot
+from app.services.tracing import traced
 
 
 async def get_appointment(db: AsyncSession, appointment_id: UUID) -> Appointment | None:
@@ -40,11 +39,11 @@ async def list_appointments(
     query = select(Appointment).where(Appointment.organization_id == organization_id)
 
     if start_date:
-        start_dt = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+        start_dt = datetime.combine(start_date, time.min, tzinfo=UTC)
         query = query.where(Appointment.scheduled_start >= start_dt)
 
     if end_date:
-        end_dt = datetime.combine(end_date, time.max, tzinfo=timezone.utc)
+        end_dt = datetime.combine(end_date, time.max, tzinfo=UTC)
         query = query.where(Appointment.scheduled_start <= end_dt)
 
     if customer_id:
@@ -180,10 +179,12 @@ async def check_appointment_conflicts(
     # Base query
     query = select(Appointment).where(
         Appointment.organization_id == organization_id,
-        Appointment.status.in_([
-            AppointmentStatus.PENDING.value,
-            AppointmentStatus.CONFIRMED.value,
-        ]),
+        Appointment.status.in_(
+            [
+                AppointmentStatus.PENDING.value,
+                AppointmentStatus.CONFIRMED.value,
+            ]
+        ),
         overlap_condition,
         or_(*resource_conditions),  # Staff OR spot conflict
     )
@@ -221,9 +222,7 @@ async def get_available_slots(
         date_to = date_from
 
     # Get service type to know duration
-    service_result = await db.execute(
-        select(ServiceType).where(ServiceType.id == service_type_id)
-    )
+    service_result = await db.execute(select(ServiceType).where(ServiceType.id == service_type_id))
     service = service_result.scalar_one_or_none()
     if not service:
         return []
@@ -231,9 +230,7 @@ async def get_available_slots(
     duration_minutes = service.duration_minutes
 
     # Look up organization timezone for interpreting availability times
-    org_result = await db.execute(
-        select(Organization).where(Organization.id == organization_id)
-    )
+    org_result = await db.execute(select(Organization).where(Organization.id == organization_id))
     org = org_result.scalar_one_or_none()
     org_tz = ZoneInfo(org.timezone) if org and org.timezone else ZoneInfo("America/Mexico_City")
 
@@ -301,7 +298,7 @@ async def get_available_slots(
                 while True:
                     # Combine with local timezone, then convert to UTC for DB queries
                     slot_start_local = datetime.combine(current_date, current_time, tzinfo=org_tz)
-                    slot_start_dt = slot_start_local.astimezone(timezone.utc)
+                    slot_start_dt = slot_start_local.astimezone(UTC)
                     slot_end_dt = slot_start_dt + timedelta(minutes=duration_minutes)
 
                     # Check if slot fits within available time (compare in local time)

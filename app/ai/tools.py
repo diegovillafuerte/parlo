@@ -7,7 +7,7 @@ There are two sets of tools:
 """
 
 import logging
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -16,7 +16,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.tracing import traced
 from app.models import (
     Appointment,
     AppointmentSource,
@@ -32,10 +31,11 @@ from app.models import (
 )
 from app.services import scheduling as scheduling_service
 from app.services.permissions import (
+    TOOL_PERMISSION_MAP,
     can_use_tool,
     get_permission_denied_message,
-    TOOL_PERMISSION_MAP,
 )
+from app.services.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -449,8 +449,8 @@ class ToolHandler:
     def _to_utc(self, naive_or_local_dt: datetime) -> datetime:
         """Convert naive/local datetime to UTC. Treats naive as org-local."""
         if naive_or_local_dt.tzinfo is None:
-            return naive_or_local_dt.replace(tzinfo=self._get_org_tz()).astimezone(timezone.utc)
-        return naive_or_local_dt.astimezone(timezone.utc)
+            return naive_or_local_dt.replace(tzinfo=self._get_org_tz()).astimezone(UTC)
+        return naive_or_local_dt.astimezone(UTC)
 
     @traced(trace_type="ai_tool", capture_args=["tool_name", "tool_input"])
     async def execute_tool(
@@ -674,12 +674,14 @@ class ToolHandler:
                     "day_name": day_name,
                     "times": [],
                 }
-            slots_by_date[date_key]["times"].append({
-                "time": local_start.strftime("%I:%M %p"),
-                "iso_time": slot.start_time.isoformat(),  # Keep UTC for booking
-                "staff_id": str(slot.staff_id),
-                "staff_name": slot.staff_name,
-            })
+            slots_by_date[date_key]["times"].append(
+                {
+                    "time": local_start.strftime("%I:%M %p"),
+                    "iso_time": slot.start_time.isoformat(),  # Keep UTC for booking
+                    "staff_id": str(slot.staff_id),
+                    "staff_name": slot.staff_name,
+                }
+            )
 
         # Format slots for AI - limit to first few per day to avoid overwhelming
         formatted_slots = []
@@ -890,9 +892,7 @@ class ToolHandler:
             "duration": f"{service.duration_minutes} min",
         }
 
-    async def _get_my_appointments(
-        self, customer: Customer | None
-    ) -> dict[str, Any]:
+    async def _get_my_appointments(self, customer: Customer | None) -> dict[str, Any]:
         """Get customer's upcoming appointments."""
         if not customer:
             return {"error": "No se pudo identificar al cliente"}
@@ -901,11 +901,13 @@ class ToolHandler:
             select(Appointment)
             .where(
                 Appointment.end_customer_id == customer.id,
-                Appointment.scheduled_start >= datetime.now(timezone.utc),
-                Appointment.status.in_([
-                    AppointmentStatus.PENDING.value,
-                    AppointmentStatus.CONFIRMED.value,
-                ]),
+                Appointment.scheduled_start >= datetime.now(UTC),
+                Appointment.status.in_(
+                    [
+                        AppointmentStatus.PENDING.value,
+                        AppointmentStatus.CONFIRMED.value,
+                    ]
+                ),
             )
             .order_by(Appointment.scheduled_start)
         )
@@ -921,14 +923,16 @@ class ToolHandler:
             staff = await self.db.get(Staff, apt.parlo_user_id) if apt.parlo_user_id else None
 
             local_start = self._to_local(apt.scheduled_start)
-            formatted.append({
-                "id": str(apt.id),
-                "service": service.name if service else "Unknown",
-                "date": local_start.strftime("%A %d de %B"),
-                "time": local_start.strftime("%I:%M %p"),
-                "staff": staff.name if staff else "Por asignar",
-                "status": apt.status,
-            })
+            formatted.append(
+                {
+                    "id": str(apt.id),
+                    "service": service.name if service else "Unknown",
+                    "date": local_start.strftime("%A %d de %B"),
+                    "time": local_start.strftime("%I:%M %p"),
+                    "staff": staff.name if staff else "Por asignar",
+                    "status": apt.status,
+                }
+            )
 
         return {"appointments": formatted}
 
@@ -1067,7 +1071,7 @@ class ToolHandler:
 
     async def _get_customer_conversation(self, customer_id: UUID) -> Conversation | None:
         """Get the active conversation for a customer."""
-        from app.models import Conversation, ConversationStatus
+        from app.models import Conversation
 
         result = await self.db.execute(
             select(Conversation).where(
@@ -1140,7 +1144,9 @@ class ToolHandler:
         # Build notification message
         customer_display = customer.name or "Cliente"
         customer_phone = customer.phone_number or ""
-        date_str = local_start.strftime("%A %d de %B, %I:%M %p")
+        from app.ai.prompts import format_date_spanish
+
+        date_str = format_date_spanish(local_start)
         price_str = f"${service.price_cents / 100:.0f}"
 
         message = (
@@ -1158,7 +1164,9 @@ class ToolHandler:
             for owner in owners:
                 if owner.phone_number and owner.id != staff.id:
                     try:
-                        from_number = resolve_whatsapp_sender(self.org) or self.org.whatsapp_phone_number_id
+                        from_number = (
+                            resolve_whatsapp_sender(self.org) or self.org.whatsapp_phone_number_id
+                        )
                         await whatsapp.send_text_message(
                             phone_number_id=self.org.whatsapp_phone_number_id or "",
                             to=owner.phone_number,
@@ -1190,8 +1198,8 @@ class ToolHandler:
         try:
             date_from_local = datetime.strptime(date_from_str, "%Y-%m-%d").replace(tzinfo=org_tz)
             date_to_local = datetime.strptime(date_to_str, "%Y-%m-%d").replace(tzinfo=org_tz)
-            date_from_utc = date_from_local.astimezone(timezone.utc)
-            date_to_utc = (date_to_local + timedelta(days=1)).astimezone(timezone.utc)
+            date_from_utc = date_from_local.astimezone(UTC)
+            date_to_utc = (date_to_local + timedelta(days=1)).astimezone(UTC)
         except ValueError:
             return {"error": "Formato de fecha inválido"}
 
@@ -1202,10 +1210,12 @@ class ToolHandler:
                 Appointment.parlo_user_id == staff.id,
                 Appointment.scheduled_start >= date_from_utc,
                 Appointment.scheduled_start < date_to_utc,
-                Appointment.status.in_([
-                    AppointmentStatus.PENDING.value,
-                    AppointmentStatus.CONFIRMED.value,
-                ]),
+                Appointment.status.in_(
+                    [
+                        AppointmentStatus.PENDING.value,
+                        AppointmentStatus.CONFIRMED.value,
+                    ]
+                ),
             )
             .order_by(Appointment.scheduled_start)
         )
@@ -1230,26 +1240,30 @@ class ToolHandler:
 
             local_start = self._to_local(apt.scheduled_start)
             local_end = self._to_local(apt.scheduled_end)
-            formatted.append({
-                "type": "appointment",
-                "time": local_start.strftime("%I:%M %p"),
-                "end_time": local_end.strftime("%I:%M %p"),
-                "service": service.name if service else "Unknown",
-                "customer": customer.name if customer and customer.name else "Cliente",
-                "customer_phone": customer.phone_number if customer else None,
-                "status": apt.status,
-                "appointment_id": str(apt.id),
-            })
+            formatted.append(
+                {
+                    "type": "appointment",
+                    "time": local_start.strftime("%I:%M %p"),
+                    "end_time": local_end.strftime("%I:%M %p"),
+                    "service": service.name if service else "Unknown",
+                    "customer": customer.name if customer and customer.name else "Cliente",
+                    "customer_phone": customer.phone_number if customer else None,
+                    "status": apt.status,
+                    "appointment_id": str(apt.id),
+                }
+            )
 
         # Add blocked times
         for block in blocked_times:
             if block.start_time and block.end_time:
-                formatted.append({
-                    "type": "blocked",
-                    "time": block.start_time.strftime("%I:%M %p"),
-                    "end_time": block.end_time.strftime("%I:%M %p"),
-                    "reason": "Bloqueado",
-                })
+                formatted.append(
+                    {
+                        "type": "blocked",
+                        "time": block.start_time.strftime("%I:%M %p"),
+                        "end_time": block.end_time.strftime("%I:%M %p"),
+                        "reason": "Bloqueado",
+                    }
+                )
 
         # Sort by time
         formatted.sort(key=lambda x: x["time"])
@@ -1277,9 +1291,7 @@ class ToolHandler:
             "display": display,
         }
 
-    async def _get_business_schedule(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _get_business_schedule(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Get full business schedule."""
         org_tz = self._get_org_tz()
         now_local = datetime.now(org_tz)
@@ -1289,8 +1301,8 @@ class ToolHandler:
         try:
             date_from_local = datetime.strptime(date_from_str, "%Y-%m-%d").replace(tzinfo=org_tz)
             date_to_local = datetime.strptime(date_to_str, "%Y-%m-%d").replace(tzinfo=org_tz)
-            date_from_utc = date_from_local.astimezone(timezone.utc)
-            date_to_utc = (date_to_local + timedelta(days=1)).astimezone(timezone.utc)
+            date_from_utc = date_from_local.astimezone(UTC)
+            date_to_utc = (date_to_local + timedelta(days=1)).astimezone(UTC)
         except ValueError:
             return {"error": "Formato de fecha inválido"}
 
@@ -1300,10 +1312,12 @@ class ToolHandler:
                 Appointment.organization_id == self.org.id,
                 Appointment.scheduled_start >= date_from_utc,
                 Appointment.scheduled_start < date_to_utc,
-                Appointment.status.in_([
-                    AppointmentStatus.PENDING.value,
-                    AppointmentStatus.CONFIRMED.value,
-                ]),
+                Appointment.status.in_(
+                    [
+                        AppointmentStatus.PENDING.value,
+                        AppointmentStatus.CONFIRMED.value,
+                    ]
+                ),
             )
             .order_by(Appointment.scheduled_start)
         )
@@ -1316,12 +1330,14 @@ class ToolHandler:
             staff = await self.db.get(Staff, apt.parlo_user_id) if apt.parlo_user_id else None
 
             local_start = self._to_local(apt.scheduled_start)
-            formatted.append({
-                "time": local_start.strftime("%I:%M %p"),
-                "staff": staff.name if staff else "Sin asignar",
-                "service": service.name if service else "Unknown",
-                "customer": customer.name if customer and customer.name else "Cliente",
-            })
+            formatted.append(
+                {
+                    "time": local_start.strftime("%I:%M %p"),
+                    "staff": staff.name if staff else "Sin asignar",
+                    "service": service.name if service else "Unknown",
+                    "customer": customer.name if customer and customer.name else "Cliente",
+                }
+            )
 
         return {
             "business": self.org.name,
@@ -1330,9 +1346,7 @@ class ToolHandler:
             "count": len(formatted),
         }
 
-    async def _block_time(
-        self, tool_input: dict[str, Any], staff: Staff | None
-    ) -> dict[str, Any]:
+    async def _block_time(self, tool_input: dict[str, Any], staff: Staff | None) -> dict[str, Any]:
         """Block time in staff schedule."""
         if not staff:
             return {"error": "No se pudo identificar al empleado"}
@@ -1377,9 +1391,7 @@ class ToolHandler:
             "reason": reason,
         }
 
-    async def _mark_appointment_status(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _mark_appointment_status(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Mark appointment status."""
         appointment_id = tool_input.get("appointment_id", "")
         status = tool_input.get("status", "")
@@ -1489,6 +1501,7 @@ class ToolHandler:
         customer = None
         if customer_phone:
             from app.services import customer as customer_service
+
             customer = await customer_service.get_or_create_customer(
                 self.db, self.org.id, customer_phone, name=customer_name
             )
@@ -1517,7 +1530,7 @@ class ToolHandler:
             return {"error": "No hay ubicación configurada"}
 
         # Create appointment starting now
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         end_time = start_time + timedelta(minutes=service.duration_minutes)
 
         # Use staff's default spot for conflict checking and appointment
@@ -1570,9 +1583,7 @@ class ToolHandler:
             "service": service.name,
         }
 
-    async def _get_customer_history(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _get_customer_history(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Get customer appointment history."""
         customer_phone = tool_input.get("customer_phone", "")
 
@@ -1601,12 +1612,14 @@ class ToolHandler:
         for apt in appointments:
             service = await self.db.get(ServiceType, apt.service_type_id)
             local_start = self._to_local(apt.scheduled_start)
-            formatted.append({
-                "date": local_start.strftime("%Y-%m-%d"),
-                "time": local_start.strftime("%I:%M %p"),
-                "service": service.name if service else "Unknown",
-                "status": apt.status,
-            })
+            formatted.append(
+                {
+                    "date": local_start.strftime("%Y-%m-%d"),
+                    "time": local_start.strftime("%I:%M %p"),
+                    "service": service.name if service else "Unknown",
+                    "status": apt.status,
+                }
+            )
 
         return {
             "customer_name": customer.name or "Sin nombre",
@@ -1615,9 +1628,7 @@ class ToolHandler:
             "history": formatted,
         }
 
-    async def _cancel_customer_appointment(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _cancel_customer_appointment(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Cancel a customer's appointment."""
         appointment_id = tool_input.get("appointment_id", "")
         reason = tool_input.get("reason", "Cancelada por el negocio")
@@ -1651,9 +1662,7 @@ class ToolHandler:
     # Management Tool Implementations (Owner/Admin)
     # -------------------------------------------------------------------------
 
-    async def _get_business_stats(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _get_business_stats(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Get business statistics."""
         from sqlalchemy import func
 
@@ -1662,11 +1671,11 @@ class ToolHandler:
 
         # Default to last 30 days
         if not date_to_str:
-            date_to = datetime.now(timezone.utc)
+            date_to = datetime.now(UTC)
         else:
             try:
                 date_to = datetime.strptime(date_to_str, "%Y-%m-%d").replace(
-                    hour=23, minute=59, second=59, tzinfo=timezone.utc
+                    hour=23, minute=59, second=59, tzinfo=UTC
                 )
             except ValueError:
                 return {"error": "Formato de fecha inválido para date_to"}
@@ -1675,9 +1684,7 @@ class ToolHandler:
             date_from = date_to - timedelta(days=30)
         else:
             try:
-                date_from = datetime.strptime(date_from_str, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                date_from = datetime.strptime(date_from_str, "%Y-%m-%d").replace(tzinfo=UTC)
             except ValueError:
                 return {"error": "Formato de fecha inválido para date_from"}
 
@@ -1731,10 +1738,7 @@ class ToolHandler:
             .order_by(func.count(Appointment.id).desc())
             .limit(5)
         )
-        top_services = [
-            {"service": row.name, "count": row.count}
-            for row in services_result.all()
-        ]
+        top_services = [{"service": row.name, "count": row.count} for row in services_result.all()]
 
         # Calculate completion rate
         completion_rate = 0
@@ -1756,7 +1760,6 @@ class ToolHandler:
         self, tool_input: dict[str, Any], current_staff: Staff | None
     ) -> dict[str, Any]:
         """Add a new staff member to the organization."""
-        from app.models import ParloUserPermissionLevel
 
         name = tool_input.get("name", "").strip()
         phone_number = tool_input.get("phone_number", "").strip()
@@ -1778,9 +1781,7 @@ class ToolHandler:
         # Validate permission level
         valid_levels = ["admin", "staff", "viewer"]
         if permission_level not in valid_levels:
-            return {
-                "error": f"Nivel de permiso inválido. Usa: {', '.join(valid_levels)}"
-            }
+            return {"error": f"Nivel de permiso inválido. Usa: {', '.join(valid_levels)}"}
 
         # Check for existing staff with same phone
         existing = await self.db.execute(
@@ -1790,12 +1791,11 @@ class ToolHandler:
             )
         )
         if existing.scalar_one_or_none():
-            return {
-                "error": f"Ya existe un empleado con el número {phone_number}"
-            }
+            return {"error": f"Ya existe un empleado con el número {phone_number}"}
 
         # Get primary location
         from app.models import Location
+
         location_result = await self.db.execute(
             select(Location).where(
                 Location.organization_id == self.org.id,
@@ -1826,9 +1826,7 @@ class ToolHandler:
             "note": "El empleado recibirá un mensaje de bienvenida en WhatsApp cuando envíe su primer mensaje.",
         }
 
-    async def _remove_staff_member(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _remove_staff_member(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Deactivate a staff member."""
         staff_name = tool_input.get("staff_name", "").strip()
         staff_phone = tool_input.get("staff_phone", "").strip()
@@ -1870,9 +1868,7 @@ class ToolHandler:
             "note": "El empleado ya no podrá acceder al sistema. Sus citas programadas no fueron afectadas.",
         }
 
-    async def _change_staff_permission(
-        self, tool_input: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _change_staff_permission(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Change a staff member's permission level."""
         staff_name = tool_input.get("staff_name", "").strip()
         new_level = tool_input.get("new_permission_level", "").strip()
@@ -1883,9 +1879,7 @@ class ToolHandler:
         # Validate new level
         valid_levels = ["admin", "staff", "viewer"]
         if new_level not in valid_levels:
-            return {
-                "error": f"Nivel inválido. Opciones: {', '.join(valid_levels)}"
-            }
+            return {"error": f"Nivel inválido. Opciones: {', '.join(valid_levels)}"}
 
         # Find the staff member
         result = await self.db.execute(

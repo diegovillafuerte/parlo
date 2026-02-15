@@ -7,30 +7,27 @@ including tool execution and conversation state management.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.ai_handler_base import ToolCallingMixin
-from app.services.tracing import traced
 from app.ai.client import OpenAIClient, get_openai_client
 from app.ai.prompts import build_customer_system_prompt, build_staff_system_prompt
 from app.ai.tools import CUSTOMER_TOOLS, STAFF_TOOLS, ToolHandler
 from app.models import (
     Conversation,
-    ConversationStatus,
     Customer,
     Message,
-    MessageContentType,
     MessageDirection,
-    MessageSenderType,
     Organization,
     ServiceType,
     Staff,
 )
+from app.services.ai_handler_base import ToolCallingMixin
+from app.services.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +202,7 @@ class ConversationHandler(ToolCallingMixin):
         Returns:
             Final response text from GPT
         """
+
         async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
             """Execute tool using ToolHandler with customer/staff context."""
             return await self.tool_handler.execute_tool(
@@ -255,9 +253,7 @@ class ConversationHandler(ToolCallingMixin):
         )
         return list(result.scalars().all())
 
-    async def _get_conversation_history(
-        self, conversation_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def _get_conversation_history(self, conversation_id: UUID) -> list[dict[str, Any]]:
         """Get conversation history for GPT.
 
         Args:
@@ -277,10 +273,12 @@ class ConversationHandler(ToolCallingMixin):
         history = []
         for msg in messages:
             role = "user" if msg.direction == MessageDirection.INBOUND.value else "assistant"
-            history.append({
-                "role": role,
-                "content": msg.content,
-            })
+            history.append(
+                {
+                    "role": role,
+                    "content": msg.content,
+                }
+            )
 
         return history
 
@@ -301,15 +299,13 @@ class ConversationHandler(ToolCallingMixin):
         context = conversation.context or {}
         context["last_user_message"] = user_message[:200]
         context["last_ai_response"] = ai_response[:200]
-        context["last_interaction_at"] = datetime.now(timezone.utc).isoformat()
+        context["last_interaction_at"] = datetime.now(UTC).isoformat()
 
         conversation.context = context
-        conversation.last_message_at = datetime.now(timezone.utc)
+        conversation.last_message_at = datetime.now(UTC)
         await self.db.flush()
 
-    def _get_fallback_response(
-        self, user_type: str, name: str | None = None
-    ) -> str:
+    def _get_fallback_response(self, user_type: str, name: str | None = None) -> str:
         """Get fallback response when AI is not configured.
 
         Args:
@@ -329,16 +325,16 @@ class ConversationHandler(ToolCallingMixin):
                 f"• Bloquear tiempo\n"
                 f"• Registrar walk-ins\n"
                 f"• Y más...\n\n"
-                f"Por favor intenta más tarde."
+                f"Por favor intenta de nuevo en unos minutos."
             )
         else:
             return (
                 f"¡Hola! 👋\n\n"
-                f"Bienvenido a {self.org.name}. Soy Parlo, tu asistente virtual.\n\n"
-                f"El sistema está siendo configurado. "
+                f"Bienvenido a {self.org.name}. Soy el asistente virtual de {self.org.name}.\n\n"
+                f"Estamos preparando todo para atenderte. "
                 f"Pronto podrás:\n"
                 f"• Agendar citas\n"
                 f"• Ver tus próximas citas\n"
                 f"• Cancelar o reagendar\n\n"
-                f"Por favor intenta más tarde o contacta directamente al negocio."
+                f"Por favor intenta de nuevo en unos minutos."
             )

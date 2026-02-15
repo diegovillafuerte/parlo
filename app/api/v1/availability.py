@@ -1,6 +1,5 @@
 """Availability API endpoints - scheduling and slot calculation."""
 
-from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -129,9 +128,7 @@ async def delete_availability(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete an availability record."""
-    result = await db.execute(
-        select(Availability).where(Availability.id == availability_id)
-    )
+    result = await db.execute(select(Availability).where(Availability.id == availability_id))
     availability = result.scalar_one_or_none()
 
     if not availability:

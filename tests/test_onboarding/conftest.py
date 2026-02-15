@@ -1,6 +1,6 @@
 """Onboarding-specific test fixtures and mocks."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -10,12 +10,12 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    Location,
     Organization,
     OrganizationStatus,
-    Location,
     ParloUser,
-    ParloUserRole,
     ParloUserPermissionLevel,
+    ParloUserRole,
     ServiceType,
 )
 from app.services.onboarding import OnboardingState
@@ -53,11 +53,13 @@ class MockOpenAIClient:
             content: Text content for text responses
             tool_calls: List of tool calls for tool responses
         """
-        self._response_queue.append({
-            "type": response_type,
-            "content": content,
-            "tool_calls": tool_calls or [],
-        })
+        self._response_queue.append(
+            {
+                "type": response_type,
+                "content": content,
+                "tool_calls": tool_calls or [],
+            }
+        )
 
     def create_message(
         self,
@@ -83,9 +85,7 @@ class MockOpenAIClient:
         """Extract text from response."""
         return response.get("content", "")
 
-    def format_assistant_message_with_tool_calls(
-        self, response: dict[str, Any]
-    ) -> dict[str, Any]:
+    def format_assistant_message_with_tool_calls(self, response: dict[str, Any]) -> dict[str, Any]:
         """Format assistant message with tool calls."""
         return {
             "role": "assistant",
@@ -131,7 +131,7 @@ async def onboarding_org_initiated(db: AsyncSession) -> Organization:
         onboarding_state=OnboardingState.INITIATED,
         onboarding_data={"owner_name": "Carlos"},
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -179,7 +179,7 @@ async def onboarding_org_collecting_services(db: AsyncSession) -> Organization:
             "business_type": "salon",
         },
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -231,7 +231,7 @@ async def onboarding_org_with_services(db: AsyncSession) -> Organization:
             ],
         },
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -292,7 +292,7 @@ async def onboarding_org_ready_for_completion(db: AsyncSession) -> Organization:
             },
         },
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -345,7 +345,7 @@ async def onboarding_org_with_twilio_number(db: AsyncSession) -> Organization:
             "twilio_phone_number_sid": "PN123456789",
         },
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -448,7 +448,7 @@ async def onboarding_session_initiated(db: AsyncSession) -> Organization:
         onboarding_state=OnboardingState.INITIATED,
         onboarding_data={"owner_name": "Carlos"},
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -494,7 +494,7 @@ async def onboarding_session_collecting_services(db: AsyncSession) -> Organizati
             "business_type": "salon",
         },
         onboarding_conversation_context={},
-        last_message_at=datetime.now(timezone.utc),
+        last_message_at=datetime.now(UTC),
     )
     db.add(org)
     await db.flush()
@@ -546,13 +546,13 @@ async def verify_organization_created(
     """
     from sqlalchemy import select
 
-    result = await db.execute(
-        select(Organization).where(Organization.phone_number == phone_number)
-    )
+    result = await db.execute(select(Organization).where(Organization.phone_number == phone_number))
     org = result.scalar_one_or_none()
 
     assert org is not None, f"Organization not found for phone {phone_number}"
-    assert org.name == expected_business_name, f"Expected name '{expected_business_name}', got '{org.name}'"
+    assert org.name == expected_business_name, (
+        f"Expected name '{expected_business_name}', got '{org.name}'"
+    )
 
     if expected_whatsapp_number:
         assert org.whatsapp_phone_number_id == expected_whatsapp_number, (
@@ -631,6 +631,8 @@ async def verify_services_created(
     )
     services = result.scalars().all()
 
-    assert len(services) == expected_count, f"Expected {expected_count} services, got {len(services)}"
+    assert len(services) == expected_count, (
+        f"Expected {expected_count} services, got {len(services)}"
+    )
 
     return list(services)

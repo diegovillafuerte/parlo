@@ -10,15 +10,16 @@ from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.models.function_trace import FunctionTrace
 
 
 # Context variables - automatically propagate through async calls
-_correlation_id: ContextVar[UUID | None] = ContextVar('correlation_id', default=None)
-_phone_number: ContextVar[str | None] = ContextVar('phone_number', default=None)
-_organization_id: ContextVar[UUID | None] = ContextVar('organization_id', default=None)
-_sequence_counter: ContextVar[int] = ContextVar('sequence_counter', default=0)
-_pending_traces: ContextVar[list["FunctionTrace"]] = ContextVar('pending_traces', default=None)
+_correlation_id: ContextVar[UUID | None] = ContextVar("correlation_id", default=None)
+_phone_number: ContextVar[str | None] = ContextVar("phone_number", default=None)
+_organization_id: ContextVar[UUID | None] = ContextVar("organization_id", default=None)
+_sequence_counter: ContextVar[int] = ContextVar("sequence_counter", default=0)
+_pending_traces: ContextVar[list["FunctionTrace"]] = ContextVar("pending_traces", default=None)
 
 
 def start_trace_context(

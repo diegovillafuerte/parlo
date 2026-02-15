@@ -14,7 +14,7 @@ When abandoned:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol, TypeVar, runtime_checkable
 
 from sqlalchemy import select
@@ -84,12 +84,12 @@ def should_mark_abandoned(
     if session.state == "abandoned":
         return False
 
-    timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    timeout_threshold = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
 
     # Handle timezone-naive datetimes
     last_message = session.last_message_at
     if last_message.tzinfo is None:
-        last_message = last_message.replace(tzinfo=timezone.utc)
+        last_message = last_message.replace(tzinfo=UTC)
 
     return last_message < timeout_threshold
 
@@ -102,14 +102,13 @@ def mark_as_abandoned(session: SessionProtocol) -> None:
     """
     collected = dict(session.collected_data or {})
     collected["last_active_state"] = session.state
-    collected["abandoned_at"] = datetime.now(timezone.utc).isoformat()
+    collected["abandoned_at"] = datetime.now(UTC).isoformat()
 
     session.collected_data = collected
     session.state = "abandoned"
 
     logger.info(
-        f"Marked session {session.id} as abandoned, "
-        f"last state: {collected['last_active_state']}"
+        f"Marked session {session.id} as abandoned, last state: {collected['last_active_state']}"
     )
 
 
@@ -132,7 +131,7 @@ def resume_from_abandoned(session: SessionProtocol) -> str | None:
     if last_state:
         session.state = last_state
         session.collected_data = collected
-        session.last_message_at = datetime.now(timezone.utc)
+        session.last_message_at = datetime.now(UTC)
 
         logger.info(f"Resumed session {session.id} from state: {last_state}")
 
@@ -141,7 +140,7 @@ def resume_from_abandoned(session: SessionProtocol) -> str | None:
     # No saved state, reset to initiated
     session.state = "initiated"
     session.collected_data = collected
-    session.last_message_at = datetime.now(timezone.utc)
+    session.last_message_at = datetime.now(UTC)
 
     return "¡Hola de nuevo! ¿En qué puedo ayudarte?"
 
@@ -161,7 +160,7 @@ async def check_and_mark_abandoned_sessions(
     Returns:
         Number of sessions marked as abandoned
     """
-    timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    timeout_threshold = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
 
     # Find active sessions that have timed out
     result = await db.execute(
@@ -196,9 +195,9 @@ def get_time_since_last_message(session: SessionProtocol) -> timedelta:
     """
     last_message = session.last_message_at
     if last_message.tzinfo is None:
-        last_message = last_message.replace(tzinfo=timezone.utc)
+        last_message = last_message.replace(tzinfo=UTC)
 
-    return datetime.now(timezone.utc) - last_message
+    return datetime.now(UTC) - last_message
 
 
 def get_resume_context(session: SessionProtocol) -> dict:

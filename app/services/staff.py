@@ -1,13 +1,13 @@
 """Staff service - business logic for staff management."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Organization, ServiceType, ParloUser
+from app.models import Organization, ParloUser, ServiceType
 from app.schemas.staff import StaffCreate, StaffUpdate
 
 
@@ -62,7 +62,7 @@ async def mark_first_message(db: AsyncSession, staff: ParloUser) -> ParloUser:
         Updated staff member
     """
     if staff.first_message_at is None:
-        staff.first_message_at = datetime.now(timezone.utc)
+        staff.first_message_at = datetime.now(UTC)
         await db.flush()
     return staff
 
@@ -131,9 +131,7 @@ async def create_staff(
     return staff
 
 
-async def update_staff(
-    db: AsyncSession, staff: ParloUser, staff_data: StaffUpdate
-) -> ParloUser:
+async def update_staff(db: AsyncSession, staff: ParloUser, staff_data: StaffUpdate) -> ParloUser:
     """Update a staff member."""
     update_dict = staff_data.model_dump(exclude_unset=True)
     for key, value in update_dict.items():
@@ -155,9 +153,7 @@ async def update_staff_services(
     """Update the services that this staff member can perform."""
     # Fetch the service types by their IDs
     if service_type_ids:
-        result = await db.execute(
-            select(ServiceType).where(ServiceType.id.in_(service_type_ids))
-        )
+        result = await db.execute(select(ServiceType).where(ServiceType.id.in_(service_type_ids)))
         service_types = list(result.scalars().all())
     else:
         service_types = []

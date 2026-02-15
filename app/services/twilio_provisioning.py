@@ -25,6 +25,7 @@ settings = get_settings()
 
 class TwilioProvisioningError(Exception):
     """Error during Twilio provisioning."""
+
     pass
 
 
@@ -38,9 +39,7 @@ class TwilioProvisioningService:
         self.waba_id = settings.twilio_waba_id
 
         # API endpoints
-        self.phone_numbers_url = (
-            f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}"
-        )
+        self.phone_numbers_url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}"
         self.senders_url = "https://messaging.twilio.com/v2/Channels/Senders"
 
         self.client = httpx.AsyncClient(timeout=30.0)
@@ -95,7 +94,9 @@ class TwilioProvisioningService:
             logger.error(f"Failed to list available numbers: {e}")
             return []
 
-    @traced(trace_type="external_api", capture_args=["phone_number", "friendly_name", "country_code"])
+    @traced(
+        trace_type="external_api", capture_args=["phone_number", "friendly_name", "country_code"]
+    )
     async def purchase_number(
         self,
         phone_number: str,
@@ -169,9 +170,7 @@ class TwilioProvisioningService:
             Status will typically be PENDING_VERIFICATION or CREATING initially
         """
         if not self.is_whatsapp_configured:
-            logger.warning(
-                "Twilio WABA not configured, cannot register WhatsApp sender"
-            )
+            logger.warning("Twilio WABA not configured, cannot register WhatsApp sender")
             return None
 
         sender_id = f"whatsapp:{phone_number}"
@@ -419,11 +418,13 @@ class TwilioProvisioningService:
                 data = response.json()
 
                 for num in data.get("incoming_phone_numbers", []):
-                    numbers.append({
-                        "sid": num["sid"],
-                        "phone_number": num["phone_number"],
-                        "friendly_name": num.get("friendly_name", ""),
-                    })
+                    numbers.append(
+                        {
+                            "sid": num["sid"],
+                            "phone_number": num["phone_number"],
+                            "friendly_name": num.get("friendly_name", ""),
+                        }
+                    )
 
                 # Twilio pagination: next_page_uri is null when no more pages
                 next_page = data.get("next_page_uri")
@@ -468,9 +469,7 @@ async def provision_number_for_business(
         if db is not None:
             unassigned = await find_unassigned_number(db)
             if unassigned:
-                logger.info(
-                    f"Reusing number {unassigned['phone_number']} for {business_name}"
-                )
+                logger.info(f"Reusing number {unassigned['phone_number']} for {business_name}")
                 # Re-register as WhatsApp sender with the new business name
                 if service.is_whatsapp_configured:
                     callback_url = f"{webhook_base_url}/api/v1/webhooks/whatsapp"
@@ -553,9 +552,7 @@ async def provision_number_for_business(
 
             if not sender:
                 # Rollback: release the purchased number
-                logger.warning(
-                    f"Failed to register WhatsApp sender, rolling back number purchase"
-                )
+                logger.warning("Failed to register WhatsApp sender, rolling back number purchase")
                 await service.release_number(phone_number_sid)
                 return None
 
@@ -569,9 +566,7 @@ async def provision_number_for_business(
         else:
             # WABA not configured - return without sender registration
             # This allows number purchase to work without WhatsApp setup
-            logger.warning(
-                "WABA not configured, number purchased but not registered for WhatsApp"
-            )
+            logger.warning("WABA not configured, number purchased but not registered for WhatsApp")
             return {
                 "phone_number": phone_number,
                 "phone_number_sid": phone_number_sid,
@@ -597,6 +592,7 @@ async def find_unassigned_number(db) -> dict[str, Any] | None:
         Dict with sid, phone_number, friendly_name of first unassigned number, or None
     """
     from sqlalchemy import select as sa_select
+
     from app.models import Organization
 
     service = TwilioProvisioningService()
@@ -623,8 +619,7 @@ async def find_unassigned_number(db) -> dict[str, Any] | None:
         for num in owned:
             if num["phone_number"] not in assigned_numbers:
                 logger.info(
-                    f"Found unassigned number for reuse: {num['phone_number']} "
-                    f"(SID: {num['sid']})"
+                    f"Found unassigned number for reuse: {num['phone_number']} (SID: {num['sid']})"
                 )
                 return num
 

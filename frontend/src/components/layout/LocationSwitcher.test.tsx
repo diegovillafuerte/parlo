@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import LocationSwitcher from './LocationSwitcher'
 import { Location } from '@/lib/types'
@@ -133,7 +133,7 @@ describe('LocationSwitcher', () => {
 
     // Dropdown should be closed - Norte should no longer be in dropdown
     // Since the button still shows selected location, we check the dropdown is gone
-    const dropdown = screen.queryByRole('button', { name: /Norte/ })
+    screen.queryByRole('button', { name: /Norte/ })
     // The dropdown items are buttons, but after closing, only the main button remains
   })
 

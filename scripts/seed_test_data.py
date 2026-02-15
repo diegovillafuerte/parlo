@@ -19,17 +19,15 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_maker
-from app.models import Location, Organization, OrganizationStatus, ServiceType, ParloUser
+from app.models import Location, ServiceType
 from app.schemas.organization import OrganizationCreate
 from app.schemas.service_type import ServiceTypeCreate
 from app.schemas.staff import StaffCreate
 from app.services import organization as org_service
 from app.services import service_type as service_service
 from app.services import staff as staff_service
-
 
 # Test data constants (matching test_webhook.py)
 TEST_PHONE_NUMBER_ID = "test_phone_123"
@@ -52,7 +50,9 @@ async def seed_data():
             )
 
             if existing_org:
-                print(f"✅ Organization already exists: {existing_org.name} (ID: {existing_org.id})")
+                print(
+                    f"✅ Organization already exists: {existing_org.name} (ID: {existing_org.id})"
+                )
                 org = existing_org
             else:
                 # Create test organization
@@ -91,7 +91,7 @@ async def seed_data():
             if location:
                 print(f"✅ Location already exists: {location.name} (ID: {location.id})")
             else:
-                print(f"\n📍 Creating primary location")
+                print("\n📍 Creating primary location")
                 location = Location(
                     organization_id=org.id,
                     name="Main Location",
@@ -113,9 +113,7 @@ async def seed_data():
                 print(f"  ✅ Created location: {location.name} (ID: {location.id})")
 
             # Create staff member if doesn't exist
-            existing_staff = await staff_service.get_staff_by_phone(
-                db, org.id, TEST_STAFF_PHONE
-            )
+            existing_staff = await staff_service.get_staff_by_phone(db, org.id, TEST_STAFF_PHONE)
 
             if existing_staff:
                 print(
@@ -141,9 +139,7 @@ async def seed_data():
                 staff = await staff_service.create_staff(db, org.id, staff_data)
                 print(f"  ✅ Created staff: {staff.name} (ID: {staff.id})")
                 print(f"  📱 Phone number: {staff.phone_number}")
-                print(
-                    f"  🔑 This phone will be recognized as STAFF in message routing"
-                )
+                print("  🔑 This phone will be recognized as STAFF in message routing")
 
             # Create service type if doesn't exist
             from sqlalchemy import select
@@ -159,7 +155,7 @@ async def seed_data():
             if service:
                 print(f"✅ Service type already exists: {service.name} (ID: {service.id})")
             else:
-                print(f"\n💇 Creating service type: Corte de cabello")
+                print("\n💇 Creating service type: Corte de cabello")
                 service_data = ServiceTypeCreate(
                     name="Corte de cabello",
                     description="Corte de cabello para caballero",
@@ -169,9 +165,7 @@ async def seed_data():
                     is_active=True,
                     settings={"requires_deposit": False},
                 )
-                service = await service_service.create_service_type(
-                    db, org.id, service_data
-                )
+                service = await service_service.create_service_type(db, org.id, service_data)
                 print(f"  ✅ Created service: {service.name} (ID: {service.id})")
                 print(f"  ⏱️  Duration: {service.duration_minutes} minutes")
                 print(f"  💰 Price: ${service.price_cents / 100:.2f} {service.currency}")
@@ -191,7 +185,7 @@ async def seed_data():
             print("\n🧪 Ready for testing!")
             print("\nYou can now test with:")
             print(
-                f"  Customer: python scripts/test_webhook.py --customer 'Hola' --phone '525587654321'"
+                "  Customer: python scripts/test_webhook.py --customer 'Hola' --phone '525587654321'"
             )
             print(
                 f"  Staff: python scripts/test_webhook.py --staff 'Qué tengo hoy?' --phone '{TEST_STAFF_PHONE}'"
@@ -212,9 +206,7 @@ async def clean_test_data():
         try:
             print("🧹 Cleaning test data...")
 
-            org = await org_service.get_organization_by_whatsapp_phone_id(
-                db, TEST_PHONE_NUMBER_ID
-            )
+            org = await org_service.get_organization_by_whatsapp_phone_id(db, TEST_PHONE_NUMBER_ID)
 
             if org:
                 print(f"Deleting organization: {org.name}")

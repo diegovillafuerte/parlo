@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     from app.models.conversation import Conversation
     from app.models.end_customer import EndCustomer
     from app.models.location import Location
-    from app.models.service_type import ServiceType
     from app.models.parlo_user import ParloUser
+    from app.models.service_type import ServiceType
 
 
 class OrganizationStatus(str, Enum):
@@ -40,12 +40,8 @@ class Organization(Base, UUIDMixin, TimestampMixin):
     whatsapp_phone_number_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, unique=True, index=True
     )
-    whatsapp_waba_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, index=True
-    )
-    timezone: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="America/Mexico_City"
-    )
+    whatsapp_waba_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="America/Mexico_City")
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-from openai import OpenAI, APIError, RateLimitError
+from openai import APIError, OpenAI, RateLimitError
 
 from app.config import get_settings
 
@@ -102,9 +102,7 @@ class OpenAIClient:
             logger.error(f"OpenAI API error: {e}")
             raise
 
-    def _convert_tools_to_openai_format(
-        self, tools: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def _convert_tools_to_openai_format(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Convert our tool format to OpenAI's function calling format.
 
         Args:
@@ -152,11 +150,13 @@ class OpenAIClient:
 
         if message.tool_calls:
             for tool_call in message.tool_calls:
-                tool_calls.append({
-                    "id": tool_call.id,
-                    "name": tool_call.function.name,
-                    "input": json.loads(tool_call.function.arguments),
-                })
+                tool_calls.append(
+                    {
+                        "id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "input": json.loads(tool_call.function.arguments),
+                    }
+                )
 
         return tool_calls
 
@@ -189,9 +189,7 @@ class OpenAIClient:
             "content": json.dumps(result, ensure_ascii=False),
         }
 
-    def format_assistant_message_with_tool_calls(
-        self, response: Any
-    ) -> dict[str, Any]:
+    def format_assistant_message_with_tool_calls(self, response: Any) -> dict[str, Any]:
         """Format assistant message with tool calls for conversation history.
 
         Args:

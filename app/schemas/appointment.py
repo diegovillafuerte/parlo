@@ -44,9 +44,7 @@ class AppointmentCreate(AppointmentBase):
 
     location_id: UUID = Field(..., description="Location ID")
     spot_id: UUID | None = Field(None, description="Spot/station ID (chair, table, etc.)")
-    source: str = Field(
-        default="whatsapp", description="Source: whatsapp, web, manual, walk_in"
-    )
+    source: str = Field(default="whatsapp", description="Source: whatsapp, web, manual, walk_in")
 
 
 # Schema for updating an appointment

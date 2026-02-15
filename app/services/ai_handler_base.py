@@ -5,7 +5,8 @@ that can be used by both ConversationHandler and OnboardingHandler.
 """
 
 import logging
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.ai.client import OpenAIClient
 
@@ -67,16 +68,12 @@ class ToolCallingMixin:
                 logger.info(f"AI wants to use {len(tool_calls)} tool(s)")
 
                 # Add assistant's response (with tool calls) to messages
-                messages.append(
-                    self.client.format_assistant_message_with_tool_calls(response)
-                )
+                messages.append(self.client.format_assistant_message_with_tool_calls(response))
 
                 # Execute each tool and add results
                 for tool_call in tool_calls:
                     result = await tool_executor(tool_call["name"], tool_call["input"])
-                    messages.append(
-                        self.client.format_tool_result_message(tool_call["id"], result)
-                    )
+                    messages.append(self.client.format_tool_result_message(tool_call["id"], result))
             else:
                 # AI gave a final response
                 response_text = self.client.extract_text_response(response)
@@ -85,4 +82,8 @@ class ToolCallingMixin:
 
         # If we hit max iterations, return what we have
         logger.warning("Hit max tool iterations, returning last response")
-        return self.client.extract_text_response(response) if response else "Lo siento, hubo un error."
+        return (
+            self.client.extract_text_response(response)
+            if response
+            else "Disculpa, tuve un problema procesando tu solicitud. ¿Puedes intentar de nuevo?"
+        )

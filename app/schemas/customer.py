@@ -11,9 +11,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class CustomerBase(BaseModel):
     """Base customer schema with common fields."""
 
-    phone_number: str = Field(
-        ..., description="Customer phone number - primary identifier"
-    )
+    phone_number: str = Field(..., description="Customer phone number - primary identifier")
     name: str | None = Field(None, description="Customer name (learned over time)")
     email: EmailStr | None = Field(None, description="Customer email (optional)")
     notes: str | None = Field(None, description="Business owner's notes about customer")

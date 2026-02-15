@@ -22,9 +22,7 @@ router = APIRouter(prefix="/organizations/{org_id}/staff", tags=["staff"])
 async def list_staff(
     org: Annotated[Organization, Depends(require_org_access)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    location_id: Annotated[
-        UUID | None, Query(description="Filter by location ID")
-    ] = None,
+    location_id: Annotated[UUID | None, Query(description="Filter by location ID")] = None,
 ) -> list[ParloUser]:
     """List all staff members for an organization."""
     staff_list = await staff_service.list_staff(db, org.id, location_id=location_id)
@@ -120,9 +118,7 @@ async def update_staff(
 
     # If updating phone number, check for conflicts
     if staff_data.phone_number and staff_data.phone_number != staff.phone_number:
-        existing = await staff_service.get_staff_by_phone(
-            db, org.id, staff_data.phone_number
-        )
+        existing = await staff_service.get_staff_by_phone(db, org.id, staff_data.phone_number)
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

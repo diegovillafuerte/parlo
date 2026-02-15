@@ -26,7 +26,9 @@ async def test_customer_reschedule(eval_db):
 
     # Message 1: Customer wants to reschedule
     result1, _ = await simulate_message(
-        eval_db, customer.phone_number, business_number,
+        eval_db,
+        customer.phone_number,
+        business_number,
         "Hola, necesito cambiar mi cita para mas tarde, como a las 3 de la tarde",
         sender_name=customer.name,
     )
@@ -35,7 +37,9 @@ async def test_customer_reschedule(eval_db):
 
     # Message 2: Confirm
     result2, _ = await simulate_message(
-        eval_db, customer.phone_number, business_number,
+        eval_db,
+        customer.phone_number,
+        business_number,
         "Si, esa hora esta bien",
     )
     assert result2["status"] == "success"
@@ -46,7 +50,9 @@ async def test_customer_reschedule(eval_db):
     # May need another confirmation
     if apt.scheduled_start == original_start and apt.status != AppointmentStatus.CANCELLED.value:
         result3, _ = await simulate_message(
-            eval_db, customer.phone_number, business_number,
+            eval_db,
+            customer.phone_number,
+            business_number,
             "Si, confirmo el cambio",
         )
         await eval_db.refresh(apt)
@@ -57,10 +63,12 @@ async def test_customer_reschedule(eval_db):
         select(Appointment).where(
             Appointment.organization_id == org.id,
             Appointment.end_customer_id == customer.id,
-            Appointment.status.in_([
-                AppointmentStatus.CONFIRMED.value,
-                AppointmentStatus.PENDING.value,
-            ]),
+            Appointment.status.in_(
+                [
+                    AppointmentStatus.CONFIRMED.value,
+                    AppointmentStatus.PENDING.value,
+                ]
+            ),
         )
     )
     confirmed = all_apts.scalars().all()

@@ -12,15 +12,15 @@ from uuid import uuid4
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.models.staff import Staff
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config import get_settings
-from app.models.organization import Organization
 from app.models.location import Location
-from app.models.spot import Spot
+from app.models.organization import Organization
 from app.models.service_type import ServiceType
-from app.models.staff import Staff
+from app.models.spot import Spot
 
 settings = get_settings()
 
@@ -119,7 +119,7 @@ async def setup_organization():
             print(f"\nOrganization ID: {org.id}")
             print(f"Location ID: {location.id}")
             print(f"Phone Number ID: {org.whatsapp_phone_number_id}")
-            print(f"\nYou can now receive WhatsApp messages!")
+            print("\nYou can now receive WhatsApp messages!")
             print("\nTo test, send a message to your WhatsApp test number from Meta.")
 
         except Exception as e:

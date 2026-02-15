@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
       const response = await adminLogin(password);
       login(response.access_token);
       router.push('/admin/dashboard');
-    } catch (err) {
+    } catch {
       setError('Invalid password');
     } finally {
       setIsLoading(false);

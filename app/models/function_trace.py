@@ -8,7 +8,7 @@ import uuid
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index, Integer, String, Text, Boolean
+from sqlalchemy import Boolean, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -112,11 +112,11 @@ class FunctionTrace(Base, UUIDMixin, TimestampMixin):
 
     # Define indexes
     __table_args__ = (
-        Index('ix_func_trace_corr_seq', 'correlation_id', 'sequence_number'),
-        Index('ix_func_trace_created', 'created_at'),
-        Index('ix_func_trace_phone', 'phone_number'),
-        Index('ix_func_trace_org', 'organization_id'),
-        Index('ix_func_trace_error', 'is_error'),
+        Index("ix_func_trace_corr_seq", "correlation_id", "sequence_number"),
+        Index("ix_func_trace_created", "created_at"),
+        Index("ix_func_trace_phone", "phone_number"),
+        Index("ix_func_trace_org", "organization_id"),
+        Index("ix_func_trace_error", "is_error"),
     )
 
     def __repr__(self) -> str:

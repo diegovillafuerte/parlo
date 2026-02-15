@@ -44,9 +44,7 @@ async def create_customer(
 ) -> EndCustomer:
     """Create a new customer (incremental identity - only phone required)."""
     # Check if customer already exists with this phone
-    existing = await customer_service.get_customer_by_phone(
-        db, org.id, customer_data.phone_number
-    )
+    existing = await customer_service.get_customer_by_phone(db, org.id, customer_data.phone_number)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

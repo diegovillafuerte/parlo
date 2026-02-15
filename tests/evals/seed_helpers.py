@@ -4,7 +4,7 @@ Each helper creates a self-contained set of test data and returns
 the created objects as a dict for easy access in tests.
 """
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
 
 from sqlalchemy import insert
@@ -90,7 +90,7 @@ async def seed_active_business(db: AsyncSession) -> dict:
         is_active=True,
         role="owner",
         permission_level="owner",
-        first_message_at=datetime.now(timezone.utc),
+        first_message_at=datetime.now(UTC),
     )
     db.add(staff)
 
@@ -106,26 +106,32 @@ async def seed_active_business(db: AsyncSession) -> dict:
 
     # Associations
     await db.execute(
-        insert(parlo_user_service_types).values([
-            {"parlo_user_id": staff_id, "service_type_id": svc_id},
-        ])
+        insert(parlo_user_service_types).values(
+            [
+                {"parlo_user_id": staff_id, "service_type_id": svc_id},
+            ]
+        )
     )
     await db.execute(
-        insert(spot_service_types).values([
-            {"spot_id": spot_id, "service_type_id": svc_id},
-        ])
+        insert(spot_service_types).values(
+            [
+                {"spot_id": spot_id, "service_type_id": svc_id},
+            ]
+        )
     )
 
     # Availability: Mon-Sat 10:00-19:00
     for day in range(0, 6):
-        db.add(Availability(
-            id=uuid4(),
-            parlo_user_id=staff_id,
-            type=AvailabilityType.RECURRING.value,
-            day_of_week=day,
-            start_time=time(10, 0),
-            end_time=time(19, 0),
-        ))
+        db.add(
+            Availability(
+                id=uuid4(),
+                parlo_user_id=staff_id,
+                type=AvailabilityType.RECURRING.value,
+                day_of_week=day,
+                start_time=time(10, 0),
+                end_time=time(19, 0),
+            )
+        )
 
     await db.flush()
 
@@ -172,7 +178,7 @@ async def seed_business_with_appointments(db: AsyncSession) -> dict:
     )
     db.add_all([cust1, cust2])
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     yesterday = now - timedelta(days=1)
     tomorrow = now + timedelta(days=1)
 
@@ -207,10 +213,12 @@ async def seed_business_with_appointments(db: AsyncSession) -> dict:
     db.add_all([past_apt, future_apt])
     await db.flush()
 
-    data.update({
-        "customer1": cust1,
-        "customer2": cust2,
-        "past_appointment": past_apt,
-        "future_appointment": future_apt,
-    })
+    data.update(
+        {
+            "customer1": cust1,
+            "customer2": cust2,
+            "past_appointment": past_apt,
+            "future_appointment": future_apt,
+        }
+    )
     return data

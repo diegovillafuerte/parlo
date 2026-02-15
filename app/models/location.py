@@ -12,8 +12,8 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.organization import Organization
-    from app.models.spot import Spot
     from app.models.parlo_user import ParloUser
+    from app.models.spot import Spot
 
 
 class Location(Base, UUIDMixin, TimestampMixin):

@@ -15,31 +15,24 @@ PERMISSION_MATRIX: dict[str, list[str]] = {
     # Schedule viewing
     "view_own_schedule": ["owner", "admin", "staff", "viewer"],
     "view_full_schedule": ["owner", "admin", "staff", "viewer"],
-
     # Booking actions
     "create_booking": ["owner", "admin", "staff"],
     "book_walk_in": ["owner", "admin", "staff"],
     "cancel_appointment": ["owner", "admin", "staff"],
-
     # Attendance tracking
     "mark_attendance": ["owner", "admin", "staff"],
     "mark_appointment_status": ["owner", "admin", "staff"],
-
     # Time management
     "block_own_time": ["owner", "admin", "staff"],
     "block_time": ["owner", "admin", "staff"],
-
     # Customer management
     "get_customer_history": ["owner", "admin", "staff"],
-
     # Statistics (owner/admin only)
     "view_stats": ["owner", "admin"],
     "get_business_stats": ["owner", "admin"],
-
     # Staff management (owner/admin only)
     "add_staff": ["owner", "admin"],
     "remove_staff": ["owner", "admin"],
-
     # Owner-only actions
     "change_permissions": ["owner"],
     "change_business_hours": ["owner"],
@@ -126,13 +119,6 @@ def get_permission_denied_message(action: str, staff: "ParloUser") -> str:
 
     action_desc = action_descriptions.get(action, action)
 
-    level_messages = {
-        "owner": "Solo el dueño puede",
-        "admin": "Solo administradores pueden",
-        "staff": "Solo empleados activos pueden",
-        "viewer": "No tienes permiso para",
-    }
-
     # Get the minimum required level for this action
     allowed_levels = PERMISSION_MATRIX.get(action, [])
     if "owner" in allowed_levels and len(allowed_levels) == 1:
@@ -164,10 +150,7 @@ def get_allowed_tools_for_permission_level(permission_level: str) -> list[str]:
     return allowed_tools
 
 
-def filter_tools_by_permission(
-    tools: list[dict],
-    staff: "ParloUser"
-) -> list[dict]:
+def filter_tools_by_permission(tools: list[dict], staff: "ParloUser") -> list[dict]:
     """Filter a list of tool definitions to only include allowed tools.
 
     This is useful for providing the AI with only the tools the staff

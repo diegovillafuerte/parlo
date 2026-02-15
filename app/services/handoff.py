@@ -9,7 +9,7 @@ This service:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -72,14 +72,16 @@ async def initiate_handoff(
     customer_name = customer.name or customer.phone_number
     conversation.status = ConversationStatus.HANDED_OFF.value
     context = dict(conversation.context or {})
-    context.update({
-        "handoff_owner_id": str(owner.id),
-        "handoff_owner_phone": owner.phone_number,
-        "handoff_reason": reason,
-        "handoff_started_at": datetime.now(timezone.utc).isoformat(),
-        "handoff_customer_phone": customer.phone_number,
-        "handoff_customer_name": customer_name,
-    })
+    context.update(
+        {
+            "handoff_owner_id": str(owner.id),
+            "handoff_owner_phone": owner.phone_number,
+            "handoff_reason": reason,
+            "handoff_started_at": datetime.now(UTC).isoformat(),
+            "handoff_customer_phone": customer.phone_number,
+            "handoff_customer_name": customer_name,
+        }
+    )
     conversation.context = context
     await db.flush()
 
@@ -95,7 +97,7 @@ async def initiate_handoff(
         f"\n"
         f"Responde aquí para hablar directamente con {customer_name}.\n"
         f"Todo lo que escribas se le enviará.\n"
-        f"Cuando termines, solo dime y retomo la conversación."
+        f'Cuando termines, escribe "listo" o "terminé" y retomo la conversación automáticamente.'
     )
 
     await whatsapp.send_text_message(
@@ -154,7 +156,7 @@ async def relay_customer_to_owner(
     )
 
     # Update last_message_at to prevent timeout
-    conversation.last_message_at = datetime.now(timezone.utc)
+    conversation.last_message_at = datetime.now(UTC)
     await db.flush()
 
 
@@ -204,7 +206,7 @@ async def relay_owner_to_customer(
     )
 
     # Update last_message_at to prevent timeout
-    conversation.last_message_at = datetime.now(timezone.utc)
+    conversation.last_message_at = datetime.now(UTC)
     await db.flush()
 
 
@@ -287,7 +289,7 @@ async def end_handoff(
         if key.startswith("handoff_"):
             del context[key]
     conversation.context = context
-    conversation.last_message_at = datetime.now(timezone.utc)
+    conversation.last_message_at = datetime.now(UTC)
     await db.flush()
 
     whatsapp = WhatsAppClient(mock_mode=mock_mode)
@@ -307,7 +309,7 @@ async def end_handoff(
         await whatsapp.send_text_message(
             phone_number_id=from_number or "",
             to=customer_phone,
-            message="\u00a1Gracias por esperar! \u00bfPuedo ayudarte con algo más?",
+            message=f"\u00a1Gracias por esperar! Soy la asistente virtual de {org.name}. \u00bfPuedo ayudarte con algo más?",
             from_number=from_number,
         )
 
@@ -352,7 +354,7 @@ async def check_handoff_timeouts(
     Returns:
         Number of conversations timed out
     """
-    threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    threshold = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
 
     result = await db.execute(
         select(Conversation).where(
@@ -381,7 +383,7 @@ async def check_handoff_timeouts(
             if key.startswith("handoff_"):
                 del context[key]
         conv.context = context
-        conv.last_message_at = datetime.now(timezone.utc)
+        conv.last_message_at = datetime.now(UTC)
 
         # Notify parties if possible
         if org:
@@ -401,10 +403,15 @@ async def check_handoff_timeouts(
 
             if customer_phone:
                 try:
+                    timeout_msg = (
+                        f"\u00a1Hola de nuevo! Soy la asistente virtual de {org.name}. \u00bfPuedo ayudarte con algo más?"
+                        if org
+                        else "\u00a1Hola de nuevo! \u00bfPuedo ayudarte con algo más?"
+                    )
                     await whatsapp.send_text_message(
                         phone_number_id=from_number or "",
                         to=customer_phone,
-                        message="\u00a1Hola de nuevo! \u00bfPuedo ayudarte con algo más?",
+                        message=timeout_msg,
                         from_number=from_number,
                     )
                 except Exception as e:
@@ -430,10 +437,12 @@ async def _find_owner(db: AsyncSession, org_id: UUID) -> ParloUser | None:
         Owner ParloUser or None
     """
     result = await db.execute(
-        select(ParloUser).where(
+        select(ParloUser)
+        .where(
             ParloUser.organization_id == org_id,
             ParloUser.role == ParloUserRole.OWNER.value,
             ParloUser.is_active == True,
-        ).limit(1)
+        )
+        .limit(1)
     )
     return result.scalar_one_or_none()

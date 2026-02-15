@@ -31,22 +31,16 @@ class Availability(Base, UUIDMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("parlo_users.id", ondelete="CASCADE"), nullable=False
     )
 
-    type: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
 
     # For recurring: day of week pattern
-    day_of_week: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )  # 0=Monday, 6=Sunday
+    day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0=Monday, 6=Sunday
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
 
     # For exceptions: specific date range
     exception_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    is_available: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True
-    )  # false = blocked off
+    is_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # false = blocked off
 
     # Relationships
     parlo_user: Mapped["ParloUser"] = relationship("ParloUser", back_populates="availability")

@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import axios from 'axios'
 
 // We need to test the interceptor behavior by creating a fresh instance
 // since the module-level interceptors are already attached

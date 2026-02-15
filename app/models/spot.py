@@ -12,17 +12,15 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.location import Location
-    from app.models.service_type import ServiceType
     from app.models.parlo_user import ParloUser
+    from app.models.service_type import ServiceType
 
 
 class Spot(Base, UUIDMixin, TimestampMixin):
     """A physical service station within a location (chair, table, bed, etc.)."""
 
     __tablename__ = "spots"
-    __table_args__ = (
-        UniqueConstraint("location_id", "name", name="uq_spot_location_name"),
-    )
+    __table_args__ = (UniqueConstraint("location_id", "name", name="uq_spot_location_name"),)
 
     location_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("locations.id", ondelete="CASCADE"), nullable=False
@@ -34,11 +32,11 @@ class Spot(Base, UUIDMixin, TimestampMixin):
 
     # Relationships
     location: Mapped["Location"] = relationship("Location", back_populates="spots")
-    appointments: Mapped[list["Appointment"]] = relationship(
-        "Appointment", back_populates="spot"
-    )
+    appointments: Mapped[list["Appointment"]] = relationship("Appointment", back_populates="spot")
     # ParloUsers assigned to this spot as their default
-    parlo_users: Mapped[list["ParloUser"]] = relationship("ParloUser", back_populates="default_spot")
+    parlo_users: Mapped[list["ParloUser"]] = relationship(
+        "ParloUser", back_populates="default_spot"
+    )
     # Services that can be performed at this spot
     service_types: Mapped[list["ServiceType"]] = relationship(
         "ServiceType",

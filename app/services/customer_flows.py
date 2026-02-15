@@ -10,7 +10,7 @@ The handler wraps around the existing ConversationHandler to add explicit state 
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -33,6 +33,8 @@ from app.models import (
 )
 from app.services.abandoned_state import (
     DEFAULT_TIMEOUT_MINUTES as ABANDONED_TIMEOUT_MINUTES,
+)
+from app.services.abandoned_state import (
     resume_from_abandoned,
 )
 from app.services.customer_profile import (
@@ -41,6 +43,7 @@ from app.services.customer_profile import (
     lookup_cross_business_profile,
     should_reconfirm_info,
 )
+from app.services.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +78,12 @@ def build_flow_aware_system_prompt(
         System prompt string
     """
     # Base prompt
-    services_list = "\n".join([
-        f"  - {s.name} (ID: {s.id}): ${s.price_cents / 100:.0f} MXN ({s.duration_minutes} min)"
-        for s in services
-    ])
+    services_list = "\n".join(
+        [
+            f"  - {s.name} (ID: {s.id}): ${s.price_cents / 100:.0f} MXN ({s.duration_minutes} min)"
+            for s in services
+        ]
+    )
 
     # Build customer context using profile service
     customer_context = format_customer_context_for_ai(
@@ -87,9 +92,12 @@ def build_flow_aware_system_prompt(
         cross_business=cross_business_info,
     )
 
-    upcoming_apts = [a for a in previous_appointments
-                     if a.scheduled_start > datetime.now(timezone.utc)
-                     and a.status in [AppointmentStatus.PENDING.value, AppointmentStatus.CONFIRMED.value]]
+    upcoming_apts = [
+        a
+        for a in previous_appointments
+        if a.scheduled_start > datetime.now(UTC)
+        and a.status in [AppointmentStatus.PENDING.value, AppointmentStatus.CONFIRMED.value]
+    ]
 
     upcoming_summary = ""
     if upcoming_apts:
@@ -98,12 +106,16 @@ def build_flow_aware_system_prompt(
     # Returning customer context
     returning_customer_note = ""
     if cross_business_info and cross_business_info.get("total_appointments", 0) > 0:
-        returning_customer_note = "\n⭐ Este es un cliente que ya ha usado Parlo antes. Trátalo con familiaridad."
+        returning_customer_note = (
+            "\n⭐ Este es un cliente que ya ha usado este sistema antes. Trátalo con familiaridad."
+        )
 
     # Name confirmation context
     name_note = ""
     if needs_name_confirmation and customer.name:
-        name_note = f"\n📝 Confirma si su nombre sigue siendo '{customer.name}' al momento de agendar."
+        name_note = (
+            f"\n📝 Confirma si su nombre sigue siendo '{customer.name}' al momento de agendar."
+        )
     elif not customer.name:
         name_note = "\n📝 Recuerda preguntar el nombre al momento de agendar la cita."
 
@@ -114,9 +126,10 @@ def build_flow_aware_system_prompt(
 
     # Format business hours
     from app.ai.prompts import format_business_hours
+
     hours_str = format_business_hours(business_hours)
 
-    base_prompt = f"""Eres Parlo, asistente virtual de {org.name}. Ayudas a clientes a agendar citas.
+    base_prompt = f"""Eres la asistente virtual de {org.name}. Ayudas a clientes a agendar citas.
 
 ## Información del Negocio
 - Nombre: {org.name}
@@ -203,7 +216,7 @@ El cliente quiere agendar. Pregunta qué servicio desea.
 """
 
     elif state == CustomerFlowState.COLLECTING_SERVICE.value:
-        return f"""**Flujo: RESERVACIÓN - Seleccionar Servicio**
+        return """**Flujo: RESERVACIÓN - Seleccionar Servicio**
 Esperando que el cliente elija un servicio de la lista.
 Cuando lo mencione, usa `check_availability` para buscar horarios.
 """
@@ -217,7 +230,7 @@ Cuando elija, avanza a confirmar o pedir nombre si no lo tenemos.
 """
 
     elif state == CustomerFlowState.COLLECTING_STAFF_PREFERENCE.value:
-        return f"""**Flujo: RESERVACIÓN - Preferencia de Personal**
+        return """**Flujo: RESERVACIÓN - Preferencia de Personal**
 Pregunta si tiene preferencia de con quién quiere la cita.
 Si no tiene preferencia, asigna automáticamente.
 """
@@ -360,6 +373,7 @@ class CustomerFlowHandler:
         self.client = openai_client or get_openai_client()
         self.tool_handler = ToolHandler(db, organization, mock_mode=mock_mode)
 
+    @traced
     async def handle_message(
         self,
         customer: EndCustomer,
@@ -392,7 +406,7 @@ class CustomerFlowHandler:
 
         # Update last message time
         if flow_session:
-            flow_session.last_message_at = datetime.now(timezone.utc)
+            flow_session.last_message_at = datetime.now(UTC)
             await self.db.flush()
 
         # Get services for prompt
@@ -606,7 +620,7 @@ class CustomerFlowHandler:
             state=state.value,
             is_active=True,
             collected_data={},
-            last_message_at=datetime.now(timezone.utc),
+            last_message_at=datetime.now(UTC),
         )
         self.db.add(session)
         await self.db.flush()
@@ -635,7 +649,7 @@ class CustomerFlowHandler:
         response = None
         all_tool_results = []
 
-        for iteration in range(max_iterations):
+        for _iteration in range(max_iterations):
             response = self.client.create_message(
                 system_prompt=system_prompt,
                 messages=messages,
@@ -646,9 +660,7 @@ class CustomerFlowHandler:
                 tool_calls = self.client.extract_tool_calls(response)
                 logger.info(f"AI wants to use {len(tool_calls)} tool(s)")
 
-                messages.append(
-                    self.client.format_assistant_message_with_tool_calls(response)
-                )
+                messages.append(self.client.format_assistant_message_with_tool_calls(response))
 
                 for tool_call in tool_calls:
                     result = await self.tool_handler.execute_tool(
@@ -659,21 +671,25 @@ class CustomerFlowHandler:
                     )
 
                     # Track tool results for state updates
-                    all_tool_results.append({
-                        "tool_name": tool_call["name"],
-                        "input": tool_call["input"],
-                        "output": result,
-                    })
-
-                    messages.append(
-                        self.client.format_tool_result_message(tool_call["id"], result)
+                    all_tool_results.append(
+                        {
+                            "tool_name": tool_call["name"],
+                            "input": tool_call["input"],
+                            "output": result,
+                        }
                     )
+
+                    messages.append(self.client.format_tool_result_message(tool_call["id"], result))
             else:
                 response_text = self.client.extract_text_response(response)
                 return response_text, all_tool_results
 
         logger.warning("Hit max tool iterations")
-        response_text = self.client.extract_text_response(response) if response else "Lo siento, hubo un error."
+        response_text = (
+            self.client.extract_text_response(response)
+            if response
+            else "Disculpa, tuve un problema procesando tu solicitud. ¿Puedes intentar de nuevo?"
+        )
         return response_text, all_tool_results
 
     async def _get_services(self) -> list[ServiceType]:
@@ -734,8 +750,8 @@ class CustomerFlowHandler:
         """Get fallback response when AI is not configured."""
         return (
             f"¡Hola! Bienvenido a {self.org.name}.\n\n"
-            f"Nuestro sistema está siendo configurado. "
-            f"Por favor intenta más tarde o contacta directamente al negocio."
+            f"Estamos preparando todo para atenderte. "
+            f"Por favor intenta de nuevo en unos minutos."
         )
 
 
@@ -750,20 +766,22 @@ async def check_abandoned_sessions(db: AsyncSession) -> int:
     Returns:
         Number of sessions marked as abandoned
     """
-    timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=ABANDONED_TIMEOUT_MINUTES)
+    timeout_threshold = datetime.now(UTC) - timedelta(minutes=ABANDONED_TIMEOUT_MINUTES)
 
     # Find active sessions that have timed out
     result = await db.execute(
         select(CustomerFlowSession).where(
             CustomerFlowSession.is_active == True,
             CustomerFlowSession.last_message_at < timeout_threshold,
-            CustomerFlowSession.state.notin_([
-                CustomerFlowState.CONFIRMED.value,
-                CustomerFlowState.CANCELLED.value,
-                CustomerFlowState.SUBMITTED.value,
-                CustomerFlowState.INQUIRY_ANSWERED.value,
-                CustomerFlowState.ABANDONED.value,
-            ]),
+            CustomerFlowSession.state.notin_(
+                [
+                    CustomerFlowState.CONFIRMED.value,
+                    CustomerFlowState.CANCELLED.value,
+                    CustomerFlowState.SUBMITTED.value,
+                    CustomerFlowState.INQUIRY_ANSWERED.value,
+                    CustomerFlowState.ABANDONED.value,
+                ]
+            ),
         )
     )
     sessions = result.scalars().all()
@@ -772,7 +790,7 @@ async def check_abandoned_sessions(db: AsyncSession) -> int:
         # Save current state for resumption
         collected = dict(session.collected_data or {})
         collected["last_active_state"] = session.state
-        collected["abandoned_at"] = datetime.now(timezone.utc).isoformat()
+        collected["abandoned_at"] = datetime.now(UTC).isoformat()
         session.collected_data = collected
         session.state = CustomerFlowState.ABANDONED.value
 

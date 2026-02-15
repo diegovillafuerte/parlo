@@ -11,11 +11,11 @@ from app.api.v1 import (
     locations,
     organizations,
     services,
+    simulate,
     spots,
     staff,
     webhooks,
 )
-from app.config import get_settings
 
 router = APIRouter()
 
@@ -33,8 +33,6 @@ router.include_router(availability.router)
 router.include_router(webhooks.router)
 
 # Simulation endpoints - admin-auth protected, available in all environments
-from app.api.v1 import simulate
-
 router.include_router(simulate.router)
 
 

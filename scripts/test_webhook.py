@@ -99,7 +99,7 @@ async def send_meta_webhook(
                 timeout=30.0,
             )
             response.raise_for_status()
-            print(f"✅ Meta webhook sent successfully")
+            print("✅ Meta webhook sent successfully")
             print(f"Response: {response.json()}")
         except httpx.HTTPError as e:
             print(f"❌ Error: {e}")
@@ -139,7 +139,7 @@ async def send_twilio_webhook(
                 timeout=30.0,
             )
             response.raise_for_status()
-            print(f"✅ Twilio webhook sent successfully")
+            print("✅ Twilio webhook sent successfully")
             print(f"Response: {response.text[:200]}")
         except httpx.HTTPError as e:
             print(f"❌ Error: {e}")
@@ -171,12 +171,12 @@ async def test_meta_verification():
             )
 
             if response.status_code == 200 and response.text == "test_challenge_response_123":
-                print(f"✅ Webhook verification PASSED")
+                print("✅ Webhook verification PASSED")
                 print(f"   Challenge echoed back: {response.text}")
             else:
-                print(f"❌ Webhook verification FAILED")
+                print("❌ Webhook verification FAILED")
                 print(f"   Status: {response.status_code}")
-                print(f"   Expected: test_challenge_response_123")
+                print("   Expected: test_challenge_response_123")
                 print(f"   Got: {response.text}")
 
         except httpx.HTTPError as e:
@@ -268,7 +268,9 @@ async def main():
     elif args.customer or args.staff:
         message = args.customer or args.staff
         print("\n" + "=" * 80)
-        print(f"{'🟢 CUSTOMER' if args.customer else '🔵 STAFF'} message via {'TWILIO' if use_twilio else 'META'}")
+        print(
+            f"{'🟢 CUSTOMER' if args.customer else '🔵 STAFF'} message via {'TWILIO' if use_twilio else 'META'}"
+        )
         print("=" * 80)
         print(f"Phone: {args.phone}")
         print(f"Name: {args.name}")

@@ -13,7 +13,7 @@ Privacy considerations:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -124,10 +124,12 @@ async def lookup_cross_business_profile(
     """
     # Find all customers with this phone number
     result = await db.execute(
-        select(EndCustomer).where(
+        select(EndCustomer)
+        .where(
             EndCustomer.phone_number == phone_number,
             EndCustomer.name.isnot(None),  # Only customers with names
-        ).order_by(
+        )
+        .order_by(
             EndCustomer.name_verified_at.desc().nullslast(),  # Prefer verified names
             EndCustomer.updated_at.desc(),  # Then most recently updated
         )
@@ -145,9 +147,7 @@ async def lookup_cross_business_profile(
     for customer in customers:
         # Get appointment count for each customer record
         apt_result = await db.execute(
-            select(func.count(Appointment.id)).where(
-                Appointment.end_customer_id == customer.id
-            )
+            select(func.count(Appointment.id)).where(Appointment.end_customer_id == customer.id)
         )
         total_appointments += apt_result.scalar() or 0
 
@@ -180,13 +180,11 @@ async def update_customer_name(
     customer.name = name
 
     if verified:
-        customer.name_verified_at = datetime.now(timezone.utc)
+        customer.name_verified_at = datetime.now(UTC)
 
     await db.flush()
 
-    logger.info(
-        f"Updated customer name: {customer.id}, verified: {verified}"
-    )
+    logger.info(f"Updated customer name: {customer.id}, verified: {verified}")
 
     return customer
 
@@ -210,7 +208,7 @@ async def should_reconfirm_info(customer: EndCustomer) -> bool:
     if not customer.name_verified_at:
         return True  # Name not verified
 
-    threshold = datetime.now(timezone.utc) - timedelta(days=RECONFIRM_THRESHOLD_DAYS)
+    threshold = datetime.now(UTC) - timedelta(days=RECONFIRM_THRESHOLD_DAYS)
     return customer.name_verified_at < threshold
 
 
@@ -285,10 +283,13 @@ async def get_customer_preferences(
 
     # Get completed appointments
     result = await db.execute(
-        select(Appointment).where(
+        select(Appointment)
+        .where(
             Appointment.end_customer_id == customer.id,
             Appointment.status == AppointmentStatus.COMPLETED.value,
-        ).order_by(Appointment.scheduled_start.desc()).limit(20)
+        )
+        .order_by(Appointment.scheduled_start.desc())
+        .limit(20)
     )
     appointments = result.scalars().all()
 
@@ -327,7 +328,8 @@ async def get_customer_preferences(
 
     # Determine preferred days (if pattern exists)
     preferred_days = [
-        day for day, count in day_counts.items()
+        day
+        for day, count in day_counts.items()
         if count >= 2  # At least 2 visits on this day
     ]
 

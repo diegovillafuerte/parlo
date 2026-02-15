@@ -1,9 +1,9 @@
 """WhatsApp webhook endpoints - receive messages from Twilio."""
 
-import logging
 import base64
 import hashlib
 import hmac
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request, status
@@ -15,8 +15,13 @@ from app.api.deps import get_db
 from app.config import get_settings
 from app.models import Organization
 from app.services.message_router import MessageRouter
+from app.services.tracing import (
+    clear_trace_context,
+    save_pending_traces,
+    set_organization_id,
+    start_trace_context,
+)
 from app.services.whatsapp import WhatsAppClient
-from app.services.tracing import start_trace_context, set_organization_id, save_pending_traces, clear_trace_context
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 logger = logging.getLogger(__name__)
@@ -84,15 +89,15 @@ async def receive_twilio_webhook(
         Empty TwiML response (or with reply message)
     """
     logger.info(
-        f"\n{'='*80}\n"
+        f"\n{'=' * 80}\n"
         f"📬 TWILIO WEBHOOK RECEIVED\n"
-        f"{'='*80}\n"
+        f"{'=' * 80}\n"
         f"  MessageSid: {MessageSid}\n"
         f"  From: {From}\n"
         f"  To: {To}\n"
         f"  Body: {Body}\n"
         f"  ProfileName: {ProfileName}\n"
-        f"{'='*80}"
+        f"{'=' * 80}"
     )
 
     # Verify Twilio signature (if enabled)
@@ -115,7 +120,7 @@ async def receive_twilio_webhook(
         request_url = str(request.url)
         forwarded_proto = request.headers.get("X-Forwarded-Proto")
         if forwarded_proto == "https" and request_url.startswith("http://"):
-            request_url = "https://" + request_url[len("http://"):]
+            request_url = "https://" + request_url[len("http://") :]
 
         if not signature or not _verify_twilio_signature(
             request_url=request_url,
@@ -137,7 +142,7 @@ async def receive_twilio_webhook(
     try:
         # Skip media-only messages for now
         if NumMedia and int(NumMedia) > 0 and not Body:
-            logger.info(f"Skipping media-only message (no text)")
+            logger.info("Skipping media-only message (no text)")
             return PlainTextResponse(content="", media_type="text/xml")
 
         # Initialize WhatsApp client
@@ -226,9 +231,7 @@ async def receive_sender_status_webhook(
     phone_number = None
     if sender_id:
         phone_number = (
-            sender_id.replace("whatsapp:", "")
-            if sender_id.startswith("whatsapp:")
-            else sender_id
+            sender_id.replace("whatsapp:", "") if sender_id.startswith("whatsapp:") else sender_id
         )
 
     # Start trace context for this webhook
@@ -236,13 +239,13 @@ async def receive_sender_status_webhook(
 
     try:
         logger.info(
-            f"\n{'='*60}\n"
+            f"\n{'=' * 60}\n"
             f"📡 TWILIO SENDER STATUS WEBHOOK\n"
-            f"{'='*60}\n"
+            f"{'=' * 60}\n"
             f"  SenderId: {sender_id}\n"
             f"  SenderSid: {sender_sid}\n"
             f"  Status: {new_status}\n"
-            f"{'='*60}"
+            f"{'=' * 60}"
         )
 
         if phone_number:

@@ -6,9 +6,9 @@ from typing import Any
 
 import httpx
 
-from app.services.tracing import traced
 from app.config import get_settings
 from app.models import Organization
+from app.services.tracing import traced
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -124,7 +124,7 @@ class WhatsAppClient:
             return result
         except httpx.HTTPError as e:
             logger.error(f"❌ Failed to send WhatsApp message via Twilio: {e}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 logger.error(f"   Response: {e.response.text}")
             raise
 

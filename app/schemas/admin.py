@@ -142,9 +142,7 @@ class AssignNumberRequest(BaseModel):
     phone_number: str = Field(
         ..., description="WhatsApp phone number in E.164 format (e.g., +525512345678)"
     )
-    sender_sid: str = Field(
-        ..., description="Twilio sender SID from the Senders API"
-    )
+    sender_sid: str = Field(..., description="Twilio sender SID from the Senders API")
 
 
 class AssignNumberResponse(BaseModel):

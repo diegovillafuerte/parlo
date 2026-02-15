@@ -13,16 +13,12 @@ from app.schemas.spot import SpotCreate, SpotUpdate
 async def get_spot(db: AsyncSession, spot_id: UUID) -> Spot | None:
     """Get spot by ID with service types loaded."""
     result = await db.execute(
-        select(Spot)
-        .where(Spot.id == spot_id)
-        .options(selectinload(Spot.service_types))
+        select(Spot).where(Spot.id == spot_id).options(selectinload(Spot.service_types))
     )
     return result.scalar_one_or_none()
 
 
-async def list_spots(
-    db: AsyncSession, location_id: UUID, active_only: bool = True
-) -> list[Spot]:
+async def list_spots(db: AsyncSession, location_id: UUID, active_only: bool = True) -> list[Spot]:
     """List all spots for a location with service types loaded."""
     query = select(Spot).where(Spot.location_id == location_id)
     if active_only:
@@ -32,9 +28,7 @@ async def list_spots(
     return list(result.scalars().all())
 
 
-async def create_spot(
-    db: AsyncSession, location_id: UUID, spot_data: SpotCreate
-) -> Spot:
+async def create_spot(db: AsyncSession, location_id: UUID, spot_data: SpotCreate) -> Spot:
     """Create a new spot."""
     spot = Spot(
         location_id=location_id,
@@ -49,9 +43,7 @@ async def create_spot(
     return spot
 
 
-async def update_spot(
-    db: AsyncSession, spot: Spot, spot_data: SpotUpdate
-) -> Spot:
+async def update_spot(db: AsyncSession, spot: Spot, spot_data: SpotUpdate) -> Spot:
     """Update a spot."""
     update_dict = spot_data.model_dump(exclude_unset=True)
     for key, value in update_dict.items():
@@ -67,15 +59,11 @@ async def delete_spot(db: AsyncSession, spot: Spot) -> None:
     await db.flush()
 
 
-async def update_spot_services(
-    db: AsyncSession, spot: Spot, service_type_ids: list[UUID]
-) -> Spot:
+async def update_spot_services(db: AsyncSession, spot: Spot, service_type_ids: list[UUID]) -> Spot:
     """Update the services that can be performed at this spot."""
     # Fetch the service types by their IDs
     if service_type_ids:
-        result = await db.execute(
-            select(ServiceType).where(ServiceType.id.in_(service_type_ids))
-        )
+        result = await db.execute(select(ServiceType).where(ServiceType.id.in_(service_type_ids)))
         service_types = list(result.scalars().all())
     else:
         service_types = []

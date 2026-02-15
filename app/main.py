@@ -1,7 +1,7 @@
 """FastAPI application entry point for Parlo."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Test database connection
     try:
-        async with engine.connect() as conn:
+        async with engine.connect():
             print("✓ Database connection successful")
     except Exception as e:
         print(f"✗ Database connection failed: {e}")

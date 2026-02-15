@@ -14,9 +14,7 @@ class OrganizationBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Business name")
     phone_country_code: str = Field(..., description="Country code (e.g., +52 for Mexico)")
     phone_number: str = Field(..., description="WhatsApp-connected phone number")
-    timezone: str = Field(
-        default="America/Mexico_City", description="Organization timezone"
-    )
+    timezone: str = Field(default="America/Mexico_City", description="Organization timezone")
 
 
 # Schema for creating a new organization

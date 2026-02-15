@@ -31,7 +31,6 @@ from app.schemas.logs import (
     CorrelationDetail,
     CorrelationListResponse,
     CorrelationSummary,
-    EnrichedCorrelation,
     TraceItem,
     UserActivityGroup,
     UserActivityListResponse,
@@ -216,13 +215,9 @@ async def update_organization_status(
 ) -> AdminOrganizationSummary:
     """Suspend or reactivate an organization."""
     if status_update.status not in ["active", "suspended"]:
-        raise HTTPException(
-            status_code=400, detail="Status must be 'active' or 'suspended'"
-        )
+        raise HTTPException(status_code=400, detail="Status must be 'active' or 'suspended'")
 
-    org = await admin_service.update_organization_status(
-        db, org_id, status_update.status
-    )
+    org = await admin_service.update_organization_status(db, org_id, status_update.status)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
@@ -282,7 +277,7 @@ async def list_conversations(
         data = await admin_service.list_conversations(db, org_id, skip, limit)
     except Exception as e:
         logger.exception("Failed to list conversations")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     results = []
     for item in data:
@@ -567,9 +562,7 @@ async def fix_sender_webhooks(
     callback_url = f"{settings.app_base_url}/api/v1/webhooks/whatsapp"
 
     result = await db.execute(
-        select(Organization).where(
-            Organization.whatsapp_phone_number_id.isnot(None)
-        )
+        select(Organization).where(Organization.whatsapp_phone_number_id.isnot(None))
     )
     orgs = result.scalars().all()
 
@@ -580,25 +573,29 @@ async def fix_sender_webhooks(
         for org in orgs:
             sender_sid = (org.settings or {}).get("sender_sid")
             if not sender_sid:
-                results.append({
-                    "org": org.name,
-                    "phone": org.whatsapp_phone_number_id,
-                    "status": "skipped",
-                    "reason": "no sender_sid in settings",
-                })
+                results.append(
+                    {
+                        "org": org.name,
+                        "phone": org.whatsapp_phone_number_id,
+                        "status": "skipped",
+                        "reason": "no sender_sid in settings",
+                    }
+                )
                 continue
 
             success = await service.update_sender_webhook(
                 sender_sid=sender_sid,
                 callback_url=callback_url,
             )
-            results.append({
-                "org": org.name,
-                "phone": org.whatsapp_phone_number_id,
-                "sender_sid": sender_sid,
-                "status": "updated" if success else "failed",
-                "callback_url": callback_url,
-            })
+            results.append(
+                {
+                    "org": org.name,
+                    "phone": org.whatsapp_phone_number_id,
+                    "sender_sid": sender_sid,
+                    "status": "updated" if success else "failed",
+                    "callback_url": callback_url,
+                }
+            )
     finally:
         await service.close()
 

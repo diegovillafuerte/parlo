@@ -1,10 +1,9 @@
 """Tests for appointment conflict detection."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -68,16 +67,23 @@ class TestCheckAppointmentConflicts:
     ):
         """Test no conflict when times don't overlap."""
         # Create existing appointment at 10:00-10:30
-        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            existing_start, existing_end
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            existing_start,
+            existing_end,
         )
 
         # Check for conflict at 11:00-11:30 (no overlap)
-        new_start = datetime(2024, 1, 15, 11, 0, tzinfo=timezone.utc)
-        new_end = datetime(2024, 1, 15, 11, 30, tzinfo=timezone.utc)
+        new_start = datetime(2024, 1, 15, 11, 0, tzinfo=UTC)
+        new_end = datetime(2024, 1, 15, 11, 30, tzinfo=UTC)
 
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=db,
@@ -101,12 +107,11 @@ class TestCheckAppointmentConflicts:
         staff: Staff,
     ):
         """Test conflict when times are exactly the same."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         existing = await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            start_time, end_time
+            db, organization, location, customer, service_type, staff, None, start_time, end_time
         )
 
         conflicts = await scheduling_service.check_appointment_conflicts(
@@ -133,16 +138,23 @@ class TestCheckAppointmentConflicts:
     ):
         """Test conflict when new appointment starts during existing."""
         # Existing: 10:00-10:30
-        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            existing_start, existing_end
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            existing_start,
+            existing_end,
         )
 
         # New: 10:15-10:45 (starts during existing)
-        new_start = datetime(2024, 1, 15, 10, 15, tzinfo=timezone.utc)
-        new_end = datetime(2024, 1, 15, 10, 45, tzinfo=timezone.utc)
+        new_start = datetime(2024, 1, 15, 10, 15, tzinfo=UTC)
+        new_end = datetime(2024, 1, 15, 10, 45, tzinfo=UTC)
 
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=db,
@@ -167,16 +179,23 @@ class TestCheckAppointmentConflicts:
     ):
         """Test conflict when new appointment ends during existing."""
         # Existing: 10:00-10:30
-        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            existing_start, existing_end
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            existing_start,
+            existing_end,
         )
 
         # New: 9:45-10:15 (ends during existing)
-        new_start = datetime(2024, 1, 15, 9, 45, tzinfo=timezone.utc)
-        new_end = datetime(2024, 1, 15, 10, 15, tzinfo=timezone.utc)
+        new_start = datetime(2024, 1, 15, 9, 45, tzinfo=UTC)
+        new_end = datetime(2024, 1, 15, 10, 15, tzinfo=UTC)
 
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=db,
@@ -201,16 +220,23 @@ class TestCheckAppointmentConflicts:
     ):
         """Test conflict when new appointment completely contains existing."""
         # Existing: 10:00-10:30
-        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            existing_start, existing_end
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            existing_start,
+            existing_end,
         )
 
         # New: 9:30-11:00 (contains existing)
-        new_start = datetime(2024, 1, 15, 9, 30, tzinfo=timezone.utc)
-        new_end = datetime(2024, 1, 15, 11, 0, tzinfo=timezone.utc)
+        new_start = datetime(2024, 1, 15, 9, 30, tzinfo=UTC)
+        new_end = datetime(2024, 1, 15, 11, 0, tzinfo=UTC)
 
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=db,
@@ -236,13 +262,12 @@ class TestCheckAppointmentConflicts:
         spot: Spot,
     ):
         """Test conflict when same spot is double-booked."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         # Existing appointment with staff1 and spot
         await create_appointment(
-            db, organization, location, customer, service_type, staff, spot,
-            start_time, end_time
+            db, organization, location, customer, service_type, staff, spot, start_time, end_time
         )
 
         # Try to book different staff but same spot
@@ -250,7 +275,7 @@ class TestCheckAppointmentConflicts:
             db=db,
             organization_id=organization.id,
             staff_id=staff2.id,  # Different staff
-            spot_id=spot.id,     # Same spot
+            spot_id=spot.id,  # Same spot
             start_time=start_time,
             end_time=end_time,
         )
@@ -269,13 +294,12 @@ class TestCheckAppointmentConflicts:
         staff2: Staff,
     ):
         """Test no conflict when different staff at same time (no spot)."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         # Existing appointment with staff1
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            start_time, end_time
+            db, organization, location, customer, service_type, staff, None, start_time, end_time
         )
 
         # Check for staff2 - should not conflict
@@ -301,13 +325,20 @@ class TestCheckAppointmentConflicts:
         staff: Staff,
     ):
         """Test no conflict with cancelled appointment at same time."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         # Create cancelled appointment
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            start_time, end_time,
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            start_time,
+            end_time,
             status=AppointmentStatus.CANCELLED.value,
         )
 
@@ -333,13 +364,20 @@ class TestCheckAppointmentConflicts:
         staff: Staff,
     ):
         """Test no conflict with completed appointment at same time."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         # Create completed appointment
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            start_time, end_time,
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            start_time,
+            end_time,
             status=AppointmentStatus.COMPLETED.value,
         )
 
@@ -365,12 +403,11 @@ class TestCheckAppointmentConflicts:
         staff: Staff,
     ):
         """Test that reschedule doesn't conflict with itself."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         existing = await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            start_time, end_time
+            db, organization, location, customer, service_type, staff, None, start_time, end_time
         )
 
         # Reschedule to same time (exclude self)
@@ -398,16 +435,23 @@ class TestCheckAppointmentConflicts:
     ):
         """Test no conflict for back-to-back appointments."""
         # Existing: 10:00-10:30
-        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        existing_start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        existing_end = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
         await create_appointment(
-            db, organization, location, customer, service_type, staff, None,
-            existing_start, existing_end
+            db,
+            organization,
+            location,
+            customer,
+            service_type,
+            staff,
+            None,
+            existing_start,
+            existing_end,
         )
 
         # New: 10:30-11:00 (starts exactly when existing ends)
-        new_start = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
-        new_end = datetime(2024, 1, 15, 11, 0, tzinfo=timezone.utc)
+        new_start = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+        new_end = datetime(2024, 1, 15, 11, 0, tzinfo=UTC)
 
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=db,
@@ -427,8 +471,8 @@ class TestCheckAppointmentConflicts:
         organization: Organization,
     ):
         """Test returns empty when no staff_id and no spot_id provided."""
-        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        end_time = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
 
         conflicts = await scheduling_service.check_appointment_conflicts(
             db=db,

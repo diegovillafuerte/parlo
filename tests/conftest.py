@@ -1,8 +1,7 @@
 """Pytest configuration and fixtures."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from uuid import uuid4
 
 import pytest
@@ -10,6 +9,15 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.models import (
+    Base,
+    EndCustomer,
+    Location,
+    Organization,
+    ParloUser,
+    ServiceType,
+    Spot,
+)
 
 settings = get_settings()
 
@@ -32,30 +40,20 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "eval" in item.keywords:
             item.add_marker(skip_eval)
-from app.models import (
-    Appointment,
-    AppointmentSource,
-    AppointmentStatus,
-    Base,
-    EndCustomer,
-    Location,
-    Organization,
-    ServiceType,
-    Spot,
-    ParloUser,
-)
+
 
 # Aliases for compatibility
 Customer = EndCustomer
 Staff = ParloUser
 
 
-
 # Use a test database — replace only the last path segment to avoid
 # double-suffixing when DATABASE_URL already ends with parlo_test
 _db_url = settings.async_database_url
 _db_name = _db_url.rsplit("/", 1)[-1]
-TEST_DATABASE_URL = _db_url.rsplit("/", 1)[0] + "/parlo_test" if _db_name != "parlo_test" else _db_url
+TEST_DATABASE_URL = (
+    _db_url.rsplit("/", 1)[0] + "/parlo_test" if _db_name != "parlo_test" else _db_url
+)
 
 
 @pytest.fixture(scope="session")
@@ -81,9 +79,7 @@ async def db_engine():
 @pytest_asyncio.fixture(scope="function")
 async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
     """Create test database session."""
-    session_factory = async_sessionmaker(
-        db_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
         await session.rollback()

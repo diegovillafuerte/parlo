@@ -5,7 +5,7 @@ Each test gets a clean DB (tables created/dropped per test).
 """
 
 import asyncio
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from uuid import UUID, uuid4
 
 import pytest
@@ -29,7 +29,9 @@ settings = get_settings()
 # when DATABASE_URL already ends with parlo_test
 _db_url = settings.async_database_url
 _db_name = _db_url.rsplit("/", 1)[-1]
-TEST_DATABASE_URL = _db_url.rsplit("/", 1)[0] + "/parlo_test" if _db_name != "parlo_test" else _db_url
+TEST_DATABASE_URL = (
+    _db_url.rsplit("/", 1)[0] + "/parlo_test" if _db_name != "parlo_test" else _db_url
+)
 
 
 @pytest.fixture(scope="session")
@@ -55,9 +57,7 @@ async def eval_engine():
 @pytest_asyncio.fixture(scope="function")
 async def eval_db(eval_engine) -> AsyncGenerator[AsyncSession, None]:
     """Create test database session for evals."""
-    session_factory = async_sessionmaker(
-        eval_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(eval_engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
         await session.rollback()
@@ -106,10 +106,12 @@ async def get_tool_calls(db: AsyncSession, correlation_id: UUID) -> list[str]:
     extracts the tool_name from input_summary.
     """
     result = await db.execute(
-        select(FunctionTrace).where(
+        select(FunctionTrace)
+        .where(
             FunctionTrace.correlation_id == correlation_id,
             FunctionTrace.trace_type == "ai_tool",
-        ).order_by(FunctionTrace.sequence_number)
+        )
+        .order_by(FunctionTrace.sequence_number)
     )
     traces = result.scalars().all()
 

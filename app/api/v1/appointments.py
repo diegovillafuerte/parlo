@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_org_access
-from app.models import Appointment, EndCustomer, Organization, ServiceType, ParloUser
+from app.models import Appointment, EndCustomer, Organization, ParloUser, ServiceType
 from app.schemas.appointment import (
     AppointmentCancel,
     AppointmentComplete,
@@ -32,9 +32,7 @@ async def list_appointments(
     db: Annotated[AsyncSession, Depends(get_db)],
     start_date: Annotated[date | None, Query(description="Filter by start date")] = None,
     end_date: Annotated[date | None, Query(description="Filter by end date")] = None,
-    customer_id: Annotated[
-        UUID | None, Query(description="Filter by customer ID")
-    ] = None,
+    customer_id: Annotated[UUID | None, Query(description="Filter by customer ID")] = None,
     staff_id: Annotated[UUID | None, Query(description="Filter by staff ID")] = None,
 ) -> list[Appointment]:
     """List appointments with optional filters."""
@@ -108,9 +106,7 @@ async def create_appointment(
         )
 
     try:
-        appointment = await scheduling_service.create_appointment(
-            db, org.id, appointment_data
-        )
+        appointment = await scheduling_service.create_appointment(db, org.id, appointment_data)
         await db.commit()
         return appointment
     except IntegrityError:
@@ -118,7 +114,7 @@ async def create_appointment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe una cita en ese horario. Por favor selecciona otro horario.",
-        )
+        ) from None
 
 
 @router.get(
@@ -161,9 +157,7 @@ async def update_appointment(
         )
 
     try:
-        appointment = await scheduling_service.update_appointment(
-            db, appointment, appointment_data
-        )
+        appointment = await scheduling_service.update_appointment(db, appointment, appointment_data)
         await db.commit()
         return appointment
     except IntegrityError:
@@ -171,7 +165,7 @@ async def update_appointment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe una cita en ese horario. Por favor selecciona otro horario.",
-        )
+        ) from None
 
 
 @router.post(

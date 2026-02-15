@@ -9,7 +9,6 @@ import { Location, LocationCreate, LocationUpdate } from '@/lib/types';
 
 export default function CompanyPage() {
   const { organization } = useAuth();
-  const queryClient = useQueryClient();
   const orgId = organization?.id;
 
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);

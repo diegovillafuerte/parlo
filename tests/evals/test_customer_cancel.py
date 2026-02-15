@@ -5,9 +5,8 @@ requesting cancellation, and asserts the appointment status changed.
 """
 
 import pytest
-from sqlalchemy import select
 
-from app.models import Appointment, AppointmentStatus
+from app.models import AppointmentStatus
 from tests.evals.conftest import simulate_message
 from tests.evals.seed_helpers import seed_business_with_appointments
 
@@ -25,7 +24,9 @@ async def test_customer_cancel(eval_db):
 
     # Message 1: Customer wants to cancel
     result1, _ = await simulate_message(
-        eval_db, customer.phone_number, business_number,
+        eval_db,
+        customer.phone_number,
+        business_number,
         "Hola, necesito cancelar mi cita",
         sender_name=customer.name,
     )
@@ -34,7 +35,9 @@ async def test_customer_cancel(eval_db):
 
     # Message 2: Confirm cancellation
     result2, _ = await simulate_message(
-        eval_db, customer.phone_number, business_number,
+        eval_db,
+        customer.phone_number,
+        business_number,
         "Si, cancela por favor",
     )
     assert result2["status"] == "success"
@@ -44,7 +47,9 @@ async def test_customer_cancel(eval_db):
     # It may take one more message
     if apt.status != AppointmentStatus.CANCELLED.value:
         result3, _ = await simulate_message(
-            eval_db, customer.phone_number, business_number,
+            eval_db,
+            customer.phone_number,
+            business_number,
             "Confirmo la cancelacion",
         )
         await eval_db.refresh(apt)

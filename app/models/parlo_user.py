@@ -76,10 +76,14 @@ class ParloUser(Base, UUIDMixin, TimestampMixin):
     # First message timestamp - NULL means never messaged via WhatsApp yet
     # Set on the first WhatsApp message from this staff member
     # Used to detect staff who need onboarding vs already-onboarded staff
-    first_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
-    organization: Mapped["Organization"] = relationship("Organization", back_populates="parlo_users")
+    organization: Mapped["Organization"] = relationship(
+        "Organization", back_populates="parlo_users"
+    )
     location: Mapped["Location | None"] = relationship("Location", back_populates="parlo_users")
     default_spot: Mapped["Spot | None"] = relationship("Spot", back_populates="parlo_users")
     appointments: Mapped[list["Appointment"]] = relationship(

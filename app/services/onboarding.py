@@ -23,7 +23,8 @@ Flow:
 """
 
 import logging
-from datetime import datetime, time as dt_time, timezone
+from datetime import UTC, datetime
+from datetime import time as dt_time
 from typing import Any
 from uuid import UUID
 
@@ -31,10 +32,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.services.ai_handler_base import ToolCallingMixin
-from app.services.tracing import traced
 from app.ai.client import OpenAIClient, get_openai_client
-from app.utils.phone import normalize_phone_number
+from app.config import get_settings
 from app.models import (
     Availability,
     AvailabilityType,
@@ -47,12 +46,16 @@ from app.models import (
     MessageSenderType,
     Organization,
     OrganizationStatus,
+    ParloUserPermissionLevel,
     ServiceType,
     Spot,
     Staff,
     StaffRole,
-    ParloUserPermissionLevel,
 )
+from app.services.ai_handler_base import ToolCallingMixin
+from app.services.tracing import traced
+from app.services.twilio_provisioning import provision_number_for_business
+from app.utils.phone import normalize_phone_number
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +104,6 @@ DAY_NAME_TO_WEEKDAY = {
     "sunday": 6,
 }
 
-
-from app.config import get_settings
-from app.services.twilio_provisioning import provision_number_for_business
 
 # Get frontend URL from config
 _settings = get_settings()
@@ -200,13 +200,62 @@ ONBOARDING_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "monday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
-                "tuesday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
-                "wednesday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
-                "thursday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
-                "friday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
-                "saturday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
-                "sunday": {"type": "object", "properties": {"open": {"type": "string"}, "close": {"type": "string"}, "closed": {"type": "boolean"}}},
+                "monday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
+                "tuesday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
+                "wednesday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
+                "thursday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
+                "friday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
+                "saturday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
+                "sunday": {
+                    "type": "object",
+                    "properties": {
+                        "open": {"type": "string"},
+                        "close": {"type": "string"},
+                        "closed": {"type": "boolean"},
+                    },
+                },
             },
         },
     },
@@ -294,13 +343,17 @@ def build_onboarding_system_prompt(org: Organization) -> str:
     if services:
         progress_parts.append(f"• Servicios: {len(services)}")
         for svc in services:
-            progress_parts.append(f"  - {svc['name']} - ${svc['price']:.0f} ({svc['duration_minutes']} min)")
+            progress_parts.append(
+                f"  - {svc['name']} - ${svc['price']:.0f} ({svc['duration_minutes']} min)"
+            )
     if staff_members:
         progress_parts.append(f"• Empleados adicionales: {len(staff_members)}")
         for st in staff_members:
             progress_parts.append(f"  - {st['name']} ({st.get('phone_number', 'sin tel')})")
 
-    progress = "\n".join(progress_parts) if progress_parts else "Ninguna información recolectada aún."
+    progress = (
+        "\n".join(progress_parts) if progress_parts else "Ninguna información recolectada aún."
+    )
 
     # Build menu display for AI reference
     menu_display = _format_service_menu(services)
@@ -325,10 +378,7 @@ Si es la primera interacción, responde EXACTAMENTE así:
 
 Ayudo a negocios de belleza a que sus clientes agenden por WhatsApp sin que tengas que contestar cada mensaje.
 
-En 2-3 minutos configuramos tu cuenta:
-1️⃣ Nombre de tu negocio
-2️⃣ Servicios con precios
-3️⃣ ¡Listo!
+En unos minutos configuramos tu cuenta. Te voy a hacer unas preguntas sobre tu negocio.
 
 ¿Tienes un salón, barbería, o negocio de belleza?"
 
@@ -488,7 +538,7 @@ class OnboardingHandler(ToolCallingMixin):
             onboarding_state=OnboardingState.INITIATED,
             onboarding_data={"owner_name": sender_name} if sender_name else {},
             onboarding_conversation_context={},
-            last_message_at=datetime.now(timezone.utc),
+            last_message_at=datetime.now(UTC),
         )
         self.db.add(org)
         await self.db.flush()
@@ -547,7 +597,7 @@ class OnboardingHandler(ToolCallingMixin):
         logger.info(f"Onboarding message for org {org.id}: {message_content[:50]}...")
 
         # Update last_message_at
-        org.last_message_at = datetime.now(timezone.utc)
+        org.last_message_at = datetime.now(UTC)
 
         # Check if AI is configured
         if not self.client.is_configured:
@@ -623,7 +673,7 @@ class OnboardingHandler(ToolCallingMixin):
             end_customer_id=None,  # No customer for onboarding
             status=ConversationStatus.ACTIVE.value,
             context={"type": "onboarding"},
-            last_message_at=datetime.now(timezone.utc),
+            last_message_at=datetime.now(UTC),
         )
         self.db.add(conversation)
         await self.db.flush()
@@ -657,10 +707,12 @@ class OnboardingHandler(ToolCallingMixin):
         history = []
         for msg in messages:
             role = "user" if msg.direction == MessageDirection.INBOUND.value else "assistant"
-            history.append({
-                "role": role,
-                "content": msg.content,
-            })
+            history.append(
+                {
+                    "role": role,
+                    "content": msg.content,
+                }
+            )
 
         return history
 
@@ -717,17 +769,18 @@ class OnboardingHandler(ToolCallingMixin):
             Tool result
         """
         import time
+
         start_time = time.time()
 
         logger.info(
-            f"\n{'='*60}\n"
+            f"\n{'=' * 60}\n"
             f"🔧 ONBOARDING TOOL EXECUTION\n"
-            f"{'='*60}\n"
+            f"{'=' * 60}\n"
             f"   Org ID: {org.id}\n"
             f"   State: {org.onboarding_state}\n"
             f"   Tool: {tool_name}\n"
             f"   Input: {tool_input}\n"
-            f"{'='*60}"
+            f"{'=' * 60}"
         )
 
         collected = dict(org.onboarding_data or {})
@@ -787,11 +840,13 @@ class OnboardingHandler(ToolCallingMixin):
             # Return the full updated menu so AI can display it
             menu_items = []
             for svc in services:
-                menu_items.append({
-                    "name": svc["name"],
-                    "price": f"${svc['price']:.0f}",
-                    "duration": f"{svc['duration_minutes']} min"
-                })
+                menu_items.append(
+                    {
+                        "name": svc["name"],
+                        "price": f"${svc['price']:.0f}",
+                        "duration": f"{svc['duration_minutes']} min",
+                    }
+                )
 
             elapsed_ms = (time.time() - start_time) * 1000
             logger.info(
@@ -804,7 +859,7 @@ class OnboardingHandler(ToolCallingMixin):
                 "message": f"Servicio '{new_service['name']}' agregado",
                 "total_services": len(services),
                 "current_menu": menu_items,
-                "menu_display": _format_service_menu(services)
+                "menu_display": _format_service_menu(services),
             }
 
         elif tool_name == "get_current_menu":
@@ -814,22 +869,24 @@ class OnboardingHandler(ToolCallingMixin):
                     "success": True,
                     "total_services": 0,
                     "current_menu": [],
-                    "menu_display": "Sin servicios aún"
+                    "menu_display": "Sin servicios aún",
                 }
 
             menu_items = []
             for svc in services:
-                menu_items.append({
-                    "name": svc["name"],
-                    "price": f"${svc['price']:.0f}",
-                    "duration": f"{svc['duration_minutes']} min"
-                })
+                menu_items.append(
+                    {
+                        "name": svc["name"],
+                        "price": f"${svc['price']:.0f}",
+                        "duration": f"{svc['duration_minutes']} min",
+                    }
+                )
 
             return {
                 "success": True,
                 "total_services": len(services),
                 "current_menu": menu_items,
-                "menu_display": _format_service_menu(services)
+                "menu_display": _format_service_menu(services),
             }
 
         elif tool_name == "add_staff_member":
@@ -861,7 +918,15 @@ class OnboardingHandler(ToolCallingMixin):
 
         elif tool_name == "save_business_hours":
             hours = {}
-            for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
+            for day in [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            ]:
                 if day in tool_input:
                     hours[day] = tool_input[day]
             if hours:
@@ -871,7 +936,9 @@ class OnboardingHandler(ToolCallingMixin):
             return {"success": True, "message": "Horario guardado"}
 
         elif tool_name == "complete_onboarding":
-            logger.info(f"   🎯 complete_onboarding called with confirmed={tool_input.get('confirmed')}")
+            logger.info(
+                f"   🎯 complete_onboarding called with confirmed={tool_input.get('confirmed')}"
+            )
 
             if not tool_input.get("confirmed"):
                 elapsed_ms = (time.time() - start_time) * 1000
@@ -881,7 +948,9 @@ class OnboardingHandler(ToolCallingMixin):
             # Verify we have minimum required data
             if not collected.get("business_name"):
                 elapsed_ms = (time.time() - start_time) * 1000
-                logger.warning(f"   ⚠️ complete_onboarding: Missing business_name ({elapsed_ms:.0f}ms)")
+                logger.warning(
+                    f"   ⚠️ complete_onboarding: Missing business_name ({elapsed_ms:.0f}ms)"
+                )
                 return {"success": False, "error": "Falta el nombre del negocio"}
             if not collected.get("services"):
                 elapsed_ms = (time.time() - start_time) * 1000
@@ -891,7 +960,9 @@ class OnboardingHandler(ToolCallingMixin):
             # Auto-provision a WhatsApp number if not already done
             number_info = {}
             if collected.get("number_status") != "provisioned":
-                logger.info(f"   📞 Auto-provisioning WhatsApp number for {collected['business_name']}")
+                logger.info(
+                    f"   📞 Auto-provisioning WhatsApp number for {collected['business_name']}"
+                )
                 try:
                     result = await provision_number_for_business(
                         business_name=collected["business_name"],
@@ -918,7 +989,9 @@ class OnboardingHandler(ToolCallingMixin):
                         org.onboarding_data = collected
                         await self.db.flush()
                         number_info = {"number_status": "pending"}
-                        logger.warning(f"   ⚠️ Number provisioning failed, continuing with pending status")
+                        logger.warning(
+                            "   ⚠️ Number provisioning failed, continuing with pending status"
+                        )
                 except Exception as e:
                     logger.error(f"   ⚠️ Number provisioning error: {e}", exc_info=True)
                     collected["number_status"] = "pending"
@@ -938,13 +1011,13 @@ class OnboardingHandler(ToolCallingMixin):
                 await self._activate_organization(org)
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.info(
-                    f"\n{'🎉'*20}\n"
+                    f"\n{'🎉' * 20}\n"
                     f"   ONBOARDING COMPLETED!\n"
                     f"   Business: {org.name}\n"
                     f"   Org ID: {org.id}\n"
                     f"   Number: {number_info.get('phone_number', 'pending')}\n"
                     f"   Duration: {elapsed_ms:.0f}ms\n"
-                    f"{'🎉'*20}"
+                    f"{'🎉' * 20}"
                 )
 
                 result = {
@@ -956,13 +1029,19 @@ class OnboardingHandler(ToolCallingMixin):
                 # Include number info so the AI can tell the user
                 if number_info.get("phone_number"):
                     result["whatsapp_number"] = number_info["phone_number"]
-                    result["number_message"] = f"Tu número de WhatsApp es {number_info['phone_number']}"
+                    result["number_message"] = (
+                        f"Tu número de WhatsApp es {number_info['phone_number']}"
+                    )
                 else:
-                    result["number_message"] = "Te asignaremos un número de WhatsApp pronto y te avisaremos por este chat"
+                    result["number_message"] = (
+                        "Te asignaremos un número de WhatsApp pronto y te avisaremos por este chat"
+                    )
                 return result
             except Exception as e:
                 elapsed_ms = (time.time() - start_time) * 1000
-                logger.error(f"   ❌ Error activating organization: {e} ({elapsed_ms:.0f}ms)", exc_info=True)
+                logger.error(
+                    f"   ❌ Error activating organization: {e} ({elapsed_ms:.0f}ms)", exc_info=True
+                )
                 return {"success": False, "error": str(e)}
 
         elif tool_name == "send_dashboard_link":
@@ -980,7 +1059,7 @@ class OnboardingHandler(ToolCallingMixin):
                     f"📱 Dashboard: {dashboard_url}\n"
                     f"(Inicia sesión con tu número de WhatsApp, sin contraseña)\n\n"
                     f"Tus clientes ya pueden escribirte por WhatsApp para agendar citas automáticamente."
-                )
+                ),
             }
 
         elif tool_name == "provision_twilio_number":
@@ -1025,9 +1104,8 @@ class OnboardingHandler(ToolCallingMixin):
                             "message": "Número listo para WhatsApp",
                             "phone_number": result["phone_number"],
                             "formatted_message": (
-                                f"¡Tu número {result['phone_number']} ya está activo para WhatsApp!\n\n"
-                                f"¿Quieres que active tu cuenta ahora?"
-                            )
+                                f"¡Tu número {result['phone_number']} ya está activo para WhatsApp!"
+                            ),
                         }
                     else:
                         return {
@@ -1037,10 +1115,8 @@ class OnboardingHandler(ToolCallingMixin):
                             "sender_status": sender_status,
                             "formatted_message": (
                                 f"¡Te asigné el número {result['phone_number']}!\n\n"
-                                f"Está en proceso de activación para WhatsApp (toma unos minutos). "
-                                f"Te avisaremos cuando esté listo.\n\n"
-                                f"¿Quieres que active tu cuenta ahora?"
-                            )
+                                f"Está en proceso de activación para WhatsApp (toma unos minutos)."
+                            ),
                         }
                 else:
                     # FALLBACK: Queue for manual provisioning
@@ -1057,10 +1133,8 @@ class OnboardingHandler(ToolCallingMixin):
                         "number_status": "pending",
                         "formatted_message": (
                             "En este momento no tenemos números disponibles, pero no te preocupes.\n\n"
-                            "Te asignaremos uno en las próximas horas y te avisaremos por WhatsApp.\n\n"
-                            "Mientras tanto, puedes seguir usando este chat para administrar tu agenda.\n\n"
-                            "¿Quieres activar tu cuenta ahora?"
-                        )
+                            "Te asignaremos uno en las próximas horas y te avisaremos por WhatsApp."
+                        ),
                     }
 
             except Exception as e:
@@ -1075,10 +1149,8 @@ class OnboardingHandler(ToolCallingMixin):
                     "number_status": "pending",
                     "formatted_message": (
                         "Hubo un problema al obtener tu número, pero no te preocupes.\n\n"
-                        "Te asignaremos uno pronto y te avisaremos por WhatsApp.\n\n"
-                        "Mientras tanto, puedes usar este chat para administrar tu agenda.\n\n"
-                        "¿Quieres activar tu cuenta ahora?"
-                    )
+                        "Te asignaremos uno pronto y te avisaremos por WhatsApp."
+                    ),
                 }
 
         result = {"error": f"Unknown tool: {tool_name}"}
@@ -1241,7 +1313,8 @@ class OnboardingHandler(ToolCallingMixin):
         # Create availability records for all staff from business hours
         business_hours = collected.get("business_hours", DEFAULT_BUSINESS_HOURS)
         all_staff_ids = [owner_staff.id] + [
-            emp.id for emp in (
+            emp.id
+            for emp in (
                 await self.db.execute(
                     select(Staff).where(
                         Staff.organization_id == org.id,
@@ -1249,7 +1322,9 @@ class OnboardingHandler(ToolCallingMixin):
                         Staff.is_active == True,
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         ]
         for sid in all_staff_ids:
             await self._create_availability_records(sid, business_hours)
@@ -1295,7 +1370,7 @@ class OnboardingHandler(ToolCallingMixin):
             org.whatsapp_phone_number_id = org.phone_number
             org_settings["whatsapp_provider"] = "pending"
             org_settings["number_status"] = "pending"
-            logger.info(f"No WhatsApp number provisioned, using owner phone as placeholder")
+            logger.info("No WhatsApp number provisioned, using owner phone as placeholder")
 
         org.settings = org_settings
         org.status = OrganizationStatus.ACTIVE.value
@@ -1334,9 +1409,8 @@ class OnboardingHandler(ToolCallingMixin):
         """
         return (
             "¡Hola! Soy Parlo, tu asistente para agendar citas.\n\n"
-            "El sistema está siendo configurado. "
-            "Por favor intenta más tarde.\n\n"
-            "Si necesitas ayuda urgente, contacta a soporte."
+            "Estamos preparando todo. "
+            "Por favor intenta de nuevo en unos minutos."
         )
 
 

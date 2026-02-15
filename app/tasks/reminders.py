@@ -1,7 +1,7 @@
 """Appointment reminder tasks."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from app.tasks.celery_app import celery_app
@@ -31,7 +31,7 @@ def check_and_send_reminders() -> dict:
         engine = create_async_engine(settings.async_database_url)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         reminder_window_start = now + timedelta(hours=23)
         reminder_window_end = now + timedelta(hours=25)
 
@@ -41,10 +41,12 @@ def check_and_send_reminders() -> dict:
                 and_(
                     Appointment.scheduled_start >= reminder_window_start,
                     Appointment.scheduled_start <= reminder_window_end,
-                    Appointment.status.in_([
-                        AppointmentStatus.PENDING.value,
-                        AppointmentStatus.CONFIRMED.value,
-                    ]),
+                    Appointment.status.in_(
+                        [
+                            AppointmentStatus.PENDING.value,
+                            AppointmentStatus.CONFIRMED.value,
+                        ]
+                    ),
                     Appointment.reminder_sent_at.is_(None),
                 )
             )
@@ -81,7 +83,7 @@ def send_appointment_reminder(appointment_id: str) -> dict:
         from sqlalchemy.orm import joinedload
 
         from app.config import get_settings
-        from app.models import Appointment, EndCustomer, Organization, ServiceType
+        from app.models import Appointment
         from app.services.whatsapp import WhatsAppClient, resolve_whatsapp_sender
 
         settings = get_settings()
@@ -125,21 +127,36 @@ def send_appointment_reminder(appointment_id: str) -> dict:
             # Format reminder message
             # Convert to org timezone for display
             import pytz
+
             org_tz = pytz.timezone(organization.timezone)
             local_time = appointment.scheduled_start.astimezone(org_tz)
 
             time_str = local_time.strftime("%I:%M %p").lower().lstrip("0")
             date_str = local_time.strftime("%A %d de %B")
 
-            # Translate day and month to Spanish
+            # Translate day and month to Spanish using shared helper logic
             day_translations = {
-                "Monday": "lunes", "Tuesday": "martes", "Wednesday": "miércoles",
-                "Thursday": "jueves", "Friday": "viernes", "Saturday": "sábado", "Sunday": "domingo"
+                "Monday": "lunes",
+                "Tuesday": "martes",
+                "Wednesday": "miércoles",
+                "Thursday": "jueves",
+                "Friday": "viernes",
+                "Saturday": "sábado",
+                "Sunday": "domingo",
             }
             month_translations = {
-                "January": "enero", "February": "febrero", "March": "marzo", "April": "abril",
-                "May": "mayo", "June": "junio", "July": "julio", "August": "agosto",
-                "September": "septiembre", "October": "octubre", "November": "noviembre", "December": "diciembre"
+                "January": "enero",
+                "February": "febrero",
+                "March": "marzo",
+                "April": "abril",
+                "May": "mayo",
+                "June": "junio",
+                "July": "julio",
+                "August": "agosto",
+                "September": "septiembre",
+                "October": "octubre",
+                "November": "noviembre",
+                "December": "diciembre",
             }
 
             for eng, esp in day_translations.items():
@@ -149,15 +166,18 @@ def send_appointment_reminder(appointment_id: str) -> dict:
 
             service_name = service_type.name if service_type else "tu cita"
             message = (
-                f"Hola! Te recordamos tu cita de {service_name} "
+                f"¡Hola! Te recordamos tu cita de {service_name} "
                 f"mañana {date_str} a las {time_str} en {organization.name}. "
-                f"Te esperamos!"
+                f"Si necesitas cancelar o cambiar, responde a este mensaje. "
+                f"¡Te esperamos!"
             )
 
             # Send via WhatsApp client (Twilio)
             whatsapp = WhatsAppClient(mock_mode=not settings.twilio_account_sid)
             try:
-                from_number = resolve_whatsapp_sender(organization) or settings.twilio_whatsapp_number
+                from_number = (
+                    resolve_whatsapp_sender(organization) or settings.twilio_whatsapp_number
+                )
                 if not from_number:
                     logger.error("No WhatsApp sender number configured for reminders")
                     return {"success": False, "error": "No WhatsApp sender configured"}
@@ -176,7 +196,7 @@ def send_appointment_reminder(appointment_id: str) -> dict:
                 await whatsapp.close()
 
             # Mark reminder as sent
-            appointment.reminder_sent_at = datetime.now(timezone.utc)
+            appointment.reminder_sent_at = datetime.now(UTC)
             await db.commit()
 
             return {"success": True, "phone": customer.phone_number}

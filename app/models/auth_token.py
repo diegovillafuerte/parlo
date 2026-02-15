@@ -1,7 +1,7 @@
 """AuthToken model - for magic link authentication."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -50,6 +50,5 @@ class AuthToken(Base, UUIDMixin, TimestampMixin):
     @property
     def is_valid(self) -> bool:
         """Check if token is valid (not expired and not used)."""
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return self.expires_at > now and self.used_at is None

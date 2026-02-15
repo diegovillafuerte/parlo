@@ -12,7 +12,7 @@ Usage:
 
 import asyncio
 import sys
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,9 +43,7 @@ from app.models.availability import AvailabilityType
 async def seed_salon_ejemplo(db: AsyncSession) -> None:
     """Seed 'Salon Ejemplo' — a fully active salon with rich data."""
     # Check if already exists
-    result = await db.execute(
-        select(Organization).where(Organization.name == "Salon Ejemplo")
-    )
+    result = await db.execute(select(Organization).where(Organization.name == "Salon Ejemplo"))
     if result.scalar_one_or_none():
         print("  Salon Ejemplo already exists, skipping")
         return
@@ -94,32 +92,52 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
     # Services
     services = [
         ServiceType(
-            id=svc1_id, organization_id=org_id,
-            name="Corte de cabello", duration_minutes=30, price_cents=25000, is_active=True,
+            id=svc1_id,
+            organization_id=org_id,
+            name="Corte de cabello",
+            duration_minutes=30,
+            price_cents=25000,
+            is_active=True,
         ),
         ServiceType(
-            id=svc2_id, organization_id=org_id,
-            name="Tinte completo", duration_minutes=90, price_cents=80000, is_active=True,
+            id=svc2_id,
+            organization_id=org_id,
+            name="Tinte completo",
+            duration_minutes=90,
+            price_cents=80000,
+            is_active=True,
         ),
         ServiceType(
-            id=svc3_id, organization_id=org_id,
-            name="Peinado para evento", duration_minutes=60, price_cents=50000, is_active=True,
+            id=svc3_id,
+            organization_id=org_id,
+            name="Peinado para evento",
+            duration_minutes=60,
+            price_cents=50000,
+            is_active=True,
         ),
     ]
     db.add_all(services)
 
     # Staff
     staff1 = ParloUser(
-        id=staff1_id, organization_id=org_id,
-        name="Maria Lopez", phone_number="+525510001002",
-        is_active=True, role="owner", permission_level="owner",
-        first_message_at=datetime.now(timezone.utc),
+        id=staff1_id,
+        organization_id=org_id,
+        name="Maria Lopez",
+        phone_number="+525510001002",
+        is_active=True,
+        role="owner",
+        permission_level="owner",
+        first_message_at=datetime.now(UTC),
     )
     staff2 = ParloUser(
-        id=staff2_id, organization_id=org_id,
-        name="Carlos Ramirez", phone_number="+525510001003",
-        is_active=True, role="employee", permission_level="staff",
-        first_message_at=datetime.now(timezone.utc),
+        id=staff2_id,
+        organization_id=org_id,
+        name="Carlos Ramirez",
+        phone_number="+525510001003",
+        is_active=True,
+        role="employee",
+        permission_level="staff",
+        first_message_at=datetime.now(UTC),
     )
     db.add_all([staff1, staff2])
 
@@ -132,75 +150,95 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
 
     # Staff-service associations (Maria does all, Carlos does corte + tinte)
     await db.execute(
-        insert(parlo_user_service_types).values([
-            {"parlo_user_id": staff1_id, "service_type_id": svc1_id},
-            {"parlo_user_id": staff1_id, "service_type_id": svc2_id},
-            {"parlo_user_id": staff1_id, "service_type_id": svc3_id},
-            {"parlo_user_id": staff2_id, "service_type_id": svc1_id},
-            {"parlo_user_id": staff2_id, "service_type_id": svc2_id},
-        ])
+        insert(parlo_user_service_types).values(
+            [
+                {"parlo_user_id": staff1_id, "service_type_id": svc1_id},
+                {"parlo_user_id": staff1_id, "service_type_id": svc2_id},
+                {"parlo_user_id": staff1_id, "service_type_id": svc3_id},
+                {"parlo_user_id": staff2_id, "service_type_id": svc1_id},
+                {"parlo_user_id": staff2_id, "service_type_id": svc2_id},
+            ]
+        )
     )
 
     # Spot-service associations (both spots support all services)
     await db.execute(
-        insert(spot_service_types).values([
-            {"spot_id": spot1_id, "service_type_id": svc1_id},
-            {"spot_id": spot1_id, "service_type_id": svc2_id},
-            {"spot_id": spot1_id, "service_type_id": svc3_id},
-            {"spot_id": spot2_id, "service_type_id": svc1_id},
-            {"spot_id": spot2_id, "service_type_id": svc2_id},
-            {"spot_id": spot2_id, "service_type_id": svc3_id},
-        ])
+        insert(spot_service_types).values(
+            [
+                {"spot_id": spot1_id, "service_type_id": svc1_id},
+                {"spot_id": spot1_id, "service_type_id": svc2_id},
+                {"spot_id": spot1_id, "service_type_id": svc3_id},
+                {"spot_id": spot2_id, "service_type_id": svc1_id},
+                {"spot_id": spot2_id, "service_type_id": svc2_id},
+                {"spot_id": spot2_id, "service_type_id": svc3_id},
+            ]
+        )
     )
 
     # Availability: Mon-Sat 10:00-19:00 for both staff
     for staff_id in [staff1_id, staff2_id]:
         for day in range(0, 6):  # Mon=0 through Sat=5
-            db.add(Availability(
-                id=uuid4(),
-                parlo_user_id=staff_id,
-                type=AvailabilityType.RECURRING.value,
-                day_of_week=day,
-                start_time=time(10, 0),
-                end_time=time(19, 0),
-            ))
+            db.add(
+                Availability(
+                    id=uuid4(),
+                    parlo_user_id=staff_id,
+                    type=AvailabilityType.RECURRING.value,
+                    day_of_week=day,
+                    start_time=time(10, 0),
+                    end_time=time(19, 0),
+                )
+            )
 
     # Customers
     customers = [
         EndCustomer(
-            id=cust1_id, organization_id=org_id,
-            phone_number="+525520001001", name="Ana Garcia",
+            id=cust1_id,
+            organization_id=org_id,
+            phone_number="+525520001001",
+            name="Ana Garcia",
         ),
         EndCustomer(
-            id=cust2_id, organization_id=org_id,
-            phone_number="+525520001002", name="Roberto Hernandez",
+            id=cust2_id,
+            organization_id=org_id,
+            phone_number="+525520001002",
+            name="Roberto Hernandez",
         ),
         EndCustomer(
-            id=cust3_id, organization_id=org_id,
-            phone_number="+525520001003", name="Sofia Martinez",
+            id=cust3_id,
+            organization_id=org_id,
+            phone_number="+525520001003",
+            name="Sofia Martinez",
         ),
     ]
     db.add_all(customers)
 
     # A few past appointments
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     yesterday = now - timedelta(days=1)
     two_days_ago = now - timedelta(days=2)
 
     appointments = [
         Appointment(
-            id=uuid4(), organization_id=org_id, location_id=loc_id,
-            end_customer_id=cust1_id, parlo_user_id=staff1_id,
-            spot_id=spot1_id, service_type_id=svc1_id,
+            id=uuid4(),
+            organization_id=org_id,
+            location_id=loc_id,
+            end_customer_id=cust1_id,
+            parlo_user_id=staff1_id,
+            spot_id=spot1_id,
+            service_type_id=svc1_id,
             scheduled_start=two_days_ago.replace(hour=10, minute=0),
             scheduled_end=two_days_ago.replace(hour=10, minute=30),
             status=AppointmentStatus.COMPLETED.value,
             source=AppointmentSource.WHATSAPP.value,
         ),
         Appointment(
-            id=uuid4(), organization_id=org_id, location_id=loc_id,
-            end_customer_id=cust2_id, parlo_user_id=staff2_id,
-            spot_id=spot2_id, service_type_id=svc2_id,
+            id=uuid4(),
+            organization_id=org_id,
+            location_id=loc_id,
+            end_customer_id=cust2_id,
+            parlo_user_id=staff2_id,
+            spot_id=spot2_id,
+            service_type_id=svc2_id,
             scheduled_start=yesterday.replace(hour=14, minute=0),
             scheduled_end=yesterday.replace(hour=15, minute=30),
             status=AppointmentStatus.COMPLETED.value,
@@ -214,9 +252,7 @@ async def seed_salon_ejemplo(db: AsyncSession) -> None:
 
 async def seed_barberia_test(db: AsyncSession) -> None:
     """Seed 'Barberia Test' — a simpler active business."""
-    result = await db.execute(
-        select(Organization).where(Organization.name == "Barberia Test")
-    )
+    result = await db.execute(select(Organization).where(Organization.name == "Barberia Test"))
     if result.scalar_one_or_none():
         print("  Barberia Test already exists, skipping")
         return
@@ -246,29 +282,43 @@ async def seed_barberia_test(db: AsyncSession) -> None:
     db.add(org)
 
     loc = Location(
-        id=loc_id, organization_id=org_id,
-        name="Local Principal", address="Calle Madero 56, Centro, CDMX",
+        id=loc_id,
+        organization_id=org_id,
+        name="Local Principal",
+        address="Calle Madero 56, Centro, CDMX",
         is_primary=True,
     )
     db.add(loc)
 
     services = [
         ServiceType(
-            id=svc1_id, organization_id=org_id,
-            name="Corte clasico", duration_minutes=25, price_cents=15000, is_active=True,
+            id=svc1_id,
+            organization_id=org_id,
+            name="Corte clasico",
+            duration_minutes=25,
+            price_cents=15000,
+            is_active=True,
         ),
         ServiceType(
-            id=svc2_id, organization_id=org_id,
-            name="Barba", duration_minutes=20, price_cents=10000, is_active=True,
+            id=svc2_id,
+            organization_id=org_id,
+            name="Barba",
+            duration_minutes=20,
+            price_cents=10000,
+            is_active=True,
         ),
     ]
     db.add_all(services)
 
     staff = ParloUser(
-        id=staff_id, organization_id=org_id,
-        name="Luis Morales", phone_number="+525530001002",
-        is_active=True, role="owner", permission_level="owner",
-        first_message_at=datetime.now(timezone.utc),
+        id=staff_id,
+        organization_id=org_id,
+        name="Luis Morales",
+        phone_number="+525530001002",
+        is_active=True,
+        role="owner",
+        permission_level="owner",
+        first_message_at=datetime.now(UTC),
     )
     db.add(staff)
 
@@ -278,28 +328,34 @@ async def seed_barberia_test(db: AsyncSession) -> None:
     await db.flush()
 
     await db.execute(
-        insert(parlo_user_service_types).values([
-            {"parlo_user_id": staff_id, "service_type_id": svc1_id},
-            {"parlo_user_id": staff_id, "service_type_id": svc2_id},
-        ])
+        insert(parlo_user_service_types).values(
+            [
+                {"parlo_user_id": staff_id, "service_type_id": svc1_id},
+                {"parlo_user_id": staff_id, "service_type_id": svc2_id},
+            ]
+        )
     )
     await db.execute(
-        insert(spot_service_types).values([
-            {"spot_id": spot_id, "service_type_id": svc1_id},
-            {"spot_id": spot_id, "service_type_id": svc2_id},
-        ])
+        insert(spot_service_types).values(
+            [
+                {"spot_id": spot_id, "service_type_id": svc1_id},
+                {"spot_id": spot_id, "service_type_id": svc2_id},
+            ]
+        )
     )
 
     # Availability: Mon-Sat 9:00-18:00
     for day in range(0, 6):
-        db.add(Availability(
-            id=uuid4(),
-            parlo_user_id=staff_id,
-            type=AvailabilityType.RECURRING.value,
-            day_of_week=day,
-            start_time=time(9, 0),
-            end_time=time(18, 0),
-        ))
+        db.add(
+            Availability(
+                id=uuid4(),
+                parlo_user_id=staff_id,
+                type=AvailabilityType.RECURRING.value,
+                day_of_week=day,
+                start_time=time(9, 0),
+                end_time=time(18, 0),
+            )
+        )
 
     print("  Created Barberia Test with 1 staff, 2 services, 1 spot")
 

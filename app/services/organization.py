@@ -30,9 +30,7 @@ async def get_organization_by_whatsapp_phone_id(
     """
     # First try Meta's phone_number_id
     result = await db.execute(
-        select(Organization).where(
-            Organization.whatsapp_phone_number_id == phone_number_id
-        )
+        select(Organization).where(Organization.whatsapp_phone_number_id == phone_number_id)
     )
     org = result.scalar_one_or_none()
     if org:
@@ -40,15 +38,11 @@ async def get_organization_by_whatsapp_phone_id(
 
     # For Twilio: try matching against phone_number field (stored in E.164)
     normalized = normalize_phone_number(phone_number_id)
-    result = await db.execute(
-        select(Organization).where(Organization.phone_number == normalized)
-    )
+    result = await db.execute(select(Organization).where(Organization.phone_number == normalized))
     return result.scalar_one_or_none()
 
 
-async def create_organization(
-    db: AsyncSession, org_data: OrganizationCreate
-) -> Organization:
+async def create_organization(db: AsyncSession, org_data: OrganizationCreate) -> Organization:
     """Create a new organization."""
     org = Organization(
         name=org_data.name,

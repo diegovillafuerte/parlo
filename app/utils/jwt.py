@@ -1,6 +1,6 @@
 """JWT utilities for authentication."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import jwt
@@ -22,7 +22,7 @@ def create_access_token(organization_id: UUID) -> str:
     """Create a JWT access token for an organization."""
     settings = get_settings()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
     payload = {
@@ -55,8 +55,8 @@ def decode_access_token(token: str) -> TokenPayload | None:
         )
         return TokenPayload(
             sub=payload["sub"],
-            exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
-            iat=datetime.fromtimestamp(payload["iat"], tz=timezone.utc),
+            exp=datetime.fromtimestamp(payload["exp"], tz=UTC),
+            iat=datetime.fromtimestamp(payload["iat"], tz=UTC),
             type=payload.get("type", "access"),
         )
     except jwt.ExpiredSignatureError:
@@ -83,7 +83,7 @@ def create_admin_access_token() -> str:
     """Create a JWT access token for admin."""
     settings = get_settings()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
     payload = {

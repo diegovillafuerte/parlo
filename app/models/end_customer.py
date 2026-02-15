@@ -61,7 +61,9 @@ class EndCustomer(Base, UUIDMixin, TimestampMixin):
     )  # Extended profile (preferences, history summary)
 
     # Relationships
-    organization: Mapped["Organization"] = relationship("Organization", back_populates="end_customers")
+    organization: Mapped["Organization"] = relationship(
+        "Organization", back_populates="end_customers"
+    )
     appointments: Mapped[list["Appointment"]] = relationship(
         "Appointment", back_populates="end_customer", cascade="all, delete-orphan"
     )

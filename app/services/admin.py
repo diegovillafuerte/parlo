@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -75,8 +75,7 @@ async def list_organizations(
 
     if search:
         query = query.where(
-            Organization.name.ilike(f"%{search}%")
-            | Organization.phone_number.ilike(f"%{search}%")
+            Organization.name.ilike(f"%{search}%") | Organization.phone_number.ilike(f"%{search}%")
         )
 
     if status:
@@ -98,22 +97,16 @@ async def get_organization_detail(db: AsyncSession, org_id: UUID) -> dict | None
 
     # Get counts
     loc_count = await db.execute(
-        select(func.count())
-        .select_from(Location)
-        .where(Location.organization_id == org_id)
+        select(func.count()).select_from(Location).where(Location.organization_id == org_id)
     )
     staff_count = await db.execute(
         select(func.count()).select_from(Staff).where(Staff.organization_id == org_id)
     )
     cust_count = await db.execute(
-        select(func.count())
-        .select_from(Customer)
-        .where(Customer.organization_id == org_id)
+        select(func.count()).select_from(Customer).where(Customer.organization_id == org_id)
     )
     appt_count = await db.execute(
-        select(func.count())
-        .select_from(Appointment)
-        .where(Appointment.organization_id == org_id)
+        select(func.count()).select_from(Appointment).where(Appointment.organization_id == org_id)
     )
 
     return {
@@ -171,9 +164,7 @@ async def list_conversations(
     output = []
     for conv in conversations:
         msg_count = await db.execute(
-            select(func.count())
-            .select_from(Message)
-            .where(Message.conversation_id == conv.id)
+            select(func.count()).select_from(Message).where(Message.conversation_id == conv.id)
         )
         output.append(
             {
@@ -185,9 +176,7 @@ async def list_conversations(
     return output
 
 
-async def get_conversation_with_messages(
-    db: AsyncSession, conversation_id: UUID
-) -> dict | None:
+async def get_conversation_with_messages(db: AsyncSession, conversation_id: UUID) -> dict | None:
     """Get conversation with all messages."""
     result = await db.execute(
         select(Conversation)
@@ -217,9 +206,7 @@ async def delete_organization(db: AsyncSession, org_id: UUID) -> bool:
     If the org had a provisioned WhatsApp number, the number stays in our
     Twilio account and becomes available for reuse by future orgs.
     """
-    result = await db.execute(
-        select(Organization).where(Organization.id == org_id)
-    )
+    result = await db.execute(select(Organization).where(Organization.id == org_id))
     org = result.scalar_one_or_none()
     if not org:
         return False
@@ -304,7 +291,6 @@ async def list_correlation_summaries(
 
     Returns a list of correlation summaries with metadata and total count.
     """
-    from sqlalchemy import distinct
 
     # Build base query for distinct correlation IDs
     base_query = select(FunctionTrace.correlation_id).distinct()
@@ -317,9 +303,9 @@ async def list_correlation_summaries(
 
     if errors_only:
         # Get correlations that have at least one error
-        error_corrs = select(FunctionTrace.correlation_id).where(
-            FunctionTrace.is_error == True
-        ).distinct()
+        error_corrs = (
+            select(FunctionTrace.correlation_id).where(FunctionTrace.is_error == True).distinct()
+        )
         base_query = base_query.where(FunctionTrace.correlation_id.in_(error_corrs))
 
     # Get total count
@@ -328,13 +314,10 @@ async def list_correlation_summaries(
 
     # Get paginated correlation IDs (ordered by most recent first)
     # We need to get the min created_at for each correlation to order properly
-    corr_query = (
-        select(
-            FunctionTrace.correlation_id,
-            func.min(FunctionTrace.created_at).label("started_at"),
-        )
-        .group_by(FunctionTrace.correlation_id)
-    )
+    corr_query = select(
+        FunctionTrace.correlation_id,
+        func.min(FunctionTrace.created_at).label("started_at"),
+    ).group_by(FunctionTrace.correlation_id)
 
     if phone_number:
         corr_query = corr_query.where(FunctionTrace.phone_number == phone_number)
@@ -345,8 +328,6 @@ async def list_correlation_summaries(
 
     corr_query = corr_query.order_by(func.min(FunctionTrace.created_at).desc())
     corr_query = corr_query.offset(skip).limit(limit)
-
-    from sqlalchemy import Integer
 
     result = await db.execute(corr_query)
     correlation_rows = result.all()
@@ -373,30 +354,28 @@ async def list_correlation_summaries(
         org_name = None
         if first_trace.organization_id:
             org_result = await db.execute(
-                select(Organization.name).where(
-                    Organization.id == first_trace.organization_id
-                )
+                select(Organization.name).where(Organization.id == first_trace.organization_id)
             )
             org_name = org_result.scalar_one_or_none()
 
-        summaries.append({
-            "correlation_id": corr_id,
-            "phone_number": first_trace.phone_number,
-            "organization_id": first_trace.organization_id,
-            "organization_name": org_name,
-            "started_at": started_at,
-            "total_duration_ms": total_duration,
-            "trace_count": len(traces),
-            "has_errors": has_errors,
-            "entry_function": first_trace.function_name,
-        })
+        summaries.append(
+            {
+                "correlation_id": corr_id,
+                "phone_number": first_trace.phone_number,
+                "organization_id": first_trace.organization_id,
+                "organization_name": org_name,
+                "started_at": started_at,
+                "total_duration_ms": total_duration,
+                "trace_count": len(traces),
+                "has_errors": has_errors,
+                "entry_function": first_trace.function_name,
+            }
+        )
 
     return summaries, total_count
 
 
-async def get_correlation_detail(
-    db: AsyncSession, correlation_id: UUID
-) -> dict | None:
+async def get_correlation_detail(db: AsyncSession, correlation_id: UUID) -> dict | None:
     """Get all traces for a correlation."""
     traces_result = await db.execute(
         select(FunctionTrace)
@@ -416,9 +395,7 @@ async def get_correlation_detail(
     org_name = None
     if first_trace.organization_id:
         org_result = await db.execute(
-            select(Organization.name).where(
-                Organization.id == first_trace.organization_id
-            )
+            select(Organization.name).where(Organization.id == first_trace.organization_id)
         )
         org_name = org_result.scalar_one_or_none()
 
@@ -468,9 +445,7 @@ def _derive_flow_type(traces: list) -> tuple[str, str]:
         return "staff_onboarding", "Staff Onboarding"
     if "handle_staff_message" in func_names or "_handle_business_management" in func_names:
         return "staff", "Business Management"
-    if "_handle_business_onboarding" in func_names or any(
-        "onboarding" in m for m in module_paths
-    ):
+    if "_handle_business_onboarding" in func_names or any("onboarding" in m for m in module_paths):
         return "onboarding", "Business Onboarding"
     if "_route_central_number_message" in func_names:
         return "central", "Central Number"
@@ -616,6 +591,7 @@ async def list_user_activity_groups(
     Returns groups sorted by most recent activity, paginated by phone number.
     """
     from collections import defaultdict
+
     from sqlalchemy import Integer
 
     # Step 1: Get distinct phone numbers ordered by latest activity
@@ -629,27 +605,17 @@ async def list_user_activity_groups(
     )
 
     if phone_number:
-        phone_query = phone_query.where(
-            FunctionTrace.phone_number.ilike(f"%{phone_number}%")
-        )
+        phone_query = phone_query.where(FunctionTrace.phone_number.ilike(f"%{phone_number}%"))
     if organization_id:
-        phone_query = phone_query.where(
-            FunctionTrace.organization_id == organization_id
-        )
+        phone_query = phone_query.where(FunctionTrace.organization_id == organization_id)
     if errors_only:
-        phone_query = phone_query.having(
-            func.max(FunctionTrace.is_error.cast(Integer)) == 1
-        )
+        phone_query = phone_query.having(func.max(FunctionTrace.is_error.cast(Integer)) == 1)
 
-    phone_query = phone_query.order_by(
-        func.max(FunctionTrace.created_at).desc()
-    )
+    phone_query = phone_query.order_by(func.max(FunctionTrace.created_at).desc())
 
     # Count total phone numbers
     count_subq = phone_query.subquery()
-    count_result = await db.execute(
-        select(func.count()).select_from(count_subq)
-    )
+    count_result = await db.execute(select(func.count()).select_from(count_subq))
     total_count = count_result.scalar_one()
 
     # Paginate phone numbers
@@ -677,8 +643,8 @@ async def list_user_activity_groups(
         phone_corr_map[t.phone_number][t.correlation_id].append(t)
 
     # Sort traces within each correlation by sequence_number
-    for phone, corr_map in phone_corr_map.items():
-        for corr_id, traces in corr_map.items():
+    for _phone, corr_map in phone_corr_map.items():
+        for _corr_id, traces in corr_map.items():
             traces.sort(key=lambda t: t.sequence_number)
 
     # Step 3: Batch lookup org names
@@ -686,9 +652,7 @@ async def list_user_activity_groups(
     org_names: dict[UUID, str] = {}
     if org_ids:
         org_result = await db.execute(
-            select(Organization.id, Organization.name).where(
-                Organization.id.in_(org_ids)
-            )
+            select(Organization.id, Organization.name).where(Organization.id.in_(org_ids))
         )
         org_names = {row.id: row.name for row in org_result.all()}
 
@@ -734,27 +698,27 @@ async def list_user_activity_groups(
             None,
         )
 
-        groups.append({
-            "phone_number": phone,
-            "organization_id": first_org_id,
-            "organization_name": first_org_name,
-            "latest_activity": latest_activity,
-            "total_interactions": len(enriched_corrs),
-            "error_count": error_count,
-            "primary_flow_type": primary_flow,
-            "primary_flow_label": flow_label_map.get(primary_flow, "Unknown"),
-            "latest_message_preview": latest_msg,
-            "correlations": enriched_corrs,
-        })
+        groups.append(
+            {
+                "phone_number": phone,
+                "organization_id": first_org_id,
+                "organization_name": first_org_name,
+                "latest_activity": latest_activity,
+                "total_interactions": len(enriched_corrs),
+                "error_count": error_count,
+                "primary_flow_type": primary_flow,
+                "primary_flow_label": flow_label_map.get(primary_flow, "Unknown"),
+                "latest_message_preview": latest_msg,
+                "correlations": enriched_corrs,
+            }
+        )
 
     return groups, total_count
 
 
 async def get_trace_detail(db: AsyncSession, trace_id: UUID) -> dict | None:
     """Get a single trace by ID."""
-    result = await db.execute(
-        select(FunctionTrace).where(FunctionTrace.id == trace_id)
-    )
+    result = await db.execute(select(FunctionTrace).where(FunctionTrace.id == trace_id))
     trace = result.scalar_one_or_none()
 
     if not trace:

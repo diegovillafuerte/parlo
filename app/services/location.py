@@ -63,6 +63,7 @@ async def delete_location(db: AsyncSession, location: Location) -> None:
 async def count_locations(db: AsyncSession, organization_id: UUID) -> int:
     """Count total locations for an organization."""
     from sqlalchemy import func
+
     result = await db.execute(
         select(func.count(Location.id)).where(Location.organization_id == organization_id)
     )

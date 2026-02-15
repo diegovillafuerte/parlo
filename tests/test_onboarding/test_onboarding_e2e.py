@@ -6,33 +6,27 @@ through organization activation and subsequent message routing.
 Updated to use Organization-based onboarding (no OnboardingSession).
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlalchemy import select
 
 from app.models import (
-    Organization,
+    Location,
     OrganizationStatus,
     ParloUser,
     ParloUserRole,
-    ServiceType,
-    Location,
+)
+from app.services.message_router import MessageRouter
+from app.services.onboarding import OnboardingHandler, OnboardingState
+from tests.test_onboarding.conftest import (
+    verify_services_created,
+    verify_staff_created,
 )
 
 # Aliases for readability
 Staff = ParloUser
 StaffRole = ParloUserRole
-from app.services.message_router import MessageRouter
-from app.services.onboarding import OnboardingHandler, OnboardingState
-
-from tests.test_onboarding.conftest import (
-    MockOpenAIClient,
-    verify_organization_created,
-    verify_staff_created,
-    verify_services_created,
-)
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -40,9 +34,7 @@ pytestmark = pytest.mark.asyncio
 class TestOnboardingE2EWithTwilioProvisioning:
     """End-to-end tests including Twilio number provisioning."""
 
-    async def test_complete_onboarding_with_twilio_number(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_complete_onboarding_with_twilio_number(self, db, mock_whatsapp_client):
         """
         Full flow:
         1. User texts Parlo Central: "Hola"
@@ -164,9 +156,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
             assert result["organization_id"] == str(org.id)
             assert result["case"] == "5"  # End customer
 
-    async def test_onboarding_creates_org_immediately(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_onboarding_creates_org_immediately(self, db, mock_whatsapp_client):
         """First message creates Organization with ONBOARDING status."""
         handler = OnboardingHandler(db=db)
 
@@ -203,9 +193,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
         assert location is not None
         assert location.name == "Principal"
 
-    async def test_returning_user_continues_onboarding(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_returning_user_continues_onboarding(self, db, mock_whatsapp_client):
         """Returning user with ONBOARDING org continues where they left off."""
         handler = OnboardingHandler(db=db)
 
@@ -245,9 +233,7 @@ class TestOnboardingE2EWithTwilioProvisioning:
 class TestOrganizationDeletionCleansUp:
     """Tests that deleting organization cleans up properly."""
 
-    async def test_delete_org_allows_fresh_onboarding(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_delete_org_allows_fresh_onboarding(self, db, mock_whatsapp_client):
         """After deleting org, same phone can start fresh onboarding."""
         handler = OnboardingHandler(db=db)
 
@@ -282,6 +268,7 @@ class TestOrganizationDeletionCleansUp:
 
         # Delete organization
         from app.services.admin import delete_organization
+
         deleted = await delete_organization(db, org_id)
         assert deleted is True
 

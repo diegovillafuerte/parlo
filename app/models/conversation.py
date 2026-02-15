@@ -55,7 +55,9 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     organization: Mapped["Organization"] = relationship(
         "Organization", back_populates="conversations"
     )
-    end_customer: Mapped["EndCustomer | None"] = relationship("EndCustomer", back_populates="conversations")
+    end_customer: Mapped["EndCustomer | None"] = relationship(
+        "EndCustomer", back_populates="conversations"
+    )
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )

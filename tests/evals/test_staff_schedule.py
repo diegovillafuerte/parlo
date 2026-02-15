@@ -6,7 +6,7 @@ asserts correct routing and tool usage.
 
 import pytest
 
-from tests.evals.conftest import simulate_message, get_tool_calls
+from tests.evals.conftest import simulate_message
 from tests.evals.seed_helpers import seed_business_with_appointments
 
 
@@ -21,7 +21,9 @@ async def test_staff_checks_schedule(eval_db):
     business_number = org.whatsapp_phone_number_id
 
     result, corr_id = await simulate_message(
-        eval_db, staff.phone_number, business_number,
+        eval_db,
+        staff.phone_number,
+        business_number,
         "Hola, como esta mi agenda de hoy?",
     )
 

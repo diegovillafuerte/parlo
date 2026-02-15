@@ -1,7 +1,7 @@
 """Cleanup tasks for maintenance operations."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.tasks.celery_app import celery_app
 
@@ -36,7 +36,7 @@ def cleanup_old_function_traces(days_to_keep: int = 7) -> dict:
         engine = create_async_engine(settings.async_database_url)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
+        cutoff_date = datetime.now(UTC) - timedelta(days=days_to_keep)
 
         async with session_factory() as db:
             # Delete old traces
@@ -80,11 +80,16 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
     async def _check_abandoned():
         from datetime import timedelta
 
-        from sqlalchemy import select, update
+        from sqlalchemy import select
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
         from app.config import get_settings
-        from app.models import CustomerFlowSession, Organization, OrganizationStatus, StaffOnboardingSession
+        from app.models import (
+            CustomerFlowSession,
+            Organization,
+            OrganizationStatus,
+            StaffOnboardingSession,
+        )
         from app.services.abandoned_state import check_and_mark_abandoned_sessions
         from app.services.onboarding import OnboardingState
 
@@ -99,7 +104,7 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
             "timeout_minutes": timeout_minutes,
         }
 
-        timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        timeout_threshold = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
 
         async with session_factory() as db:
             # Check customer flow sessions
@@ -131,18 +136,20 @@ def check_abandoned_sessions(timeout_minutes: int = 30) -> dict:
                 # Save last active state before marking abandoned
                 onboarding_data = dict(org.onboarding_data or {})
                 onboarding_data["last_active_state"] = org.onboarding_state
-                onboarding_data["abandoned_at"] = datetime.now(timezone.utc).isoformat()
+                onboarding_data["abandoned_at"] = datetime.now(UTC).isoformat()
                 org.onboarding_data = onboarding_data
                 org.onboarding_state = OnboardingState.ABANDONED
                 results["business_onboarding"] += 1
 
             await db.commit()
 
-            total = sum([
-                results["customer_flows"],
-                results["staff_onboarding"],
-                results["business_onboarding"],
-            ])
+            total = sum(
+                [
+                    results["customer_flows"],
+                    results["staff_onboarding"],
+                    results["business_onboarding"],
+                ]
+            )
 
             if total > 0:
                 logger.info(f"Marked {total} sessions as abandoned: {results}")

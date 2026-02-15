@@ -17,21 +17,21 @@ Usage:
 import asyncio
 import functools
 import time
-from typing import Callable, ParamSpec, TypeVar
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
 
 from app.models.function_trace import FunctionTrace, FunctionTraceType
 from app.services.tracing.context import (
-    get_correlation_id,
-    get_phone_number,
-    get_organization_id,
-    get_next_sequence_number,
     add_pending_trace,
+    get_correlation_id,
+    get_next_sequence_number,
+    get_organization_id,
+    get_phone_number,
 )
 from app.services.tracing.sanitize import build_input_summary, build_output_summary
 
-
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
 def traced(
@@ -60,6 +60,7 @@ def traced(
 
     def decorator(fn: Callable[P, T]) -> Callable[P, T]:
         if asyncio.iscoroutinefunction(fn):
+
             @functools.wraps(fn)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
                 corr_id = get_correlation_id()
@@ -109,6 +110,7 @@ def traced(
 
             return async_wrapper
         else:
+
             @functools.wraps(fn)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
                 corr_id = get_correlation_id()

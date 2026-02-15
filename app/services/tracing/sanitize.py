@@ -5,10 +5,10 @@ for storage in traces, including truncation and sensitive field masking.
 """
 
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import date, datetime
+from typing import Any
 from uuid import UUID
-from datetime import datetime, date
-
 
 # Maximum string length before truncation
 MAX_STRING_LENGTH = 200
@@ -18,8 +18,16 @@ MAX_COLLECTION_ITEMS = 10
 
 # Fields that should be masked (case-insensitive partial match)
 SENSITIVE_FIELDS = {
-    'password', 'token', 'secret', 'key', 'auth', 'credential',
-    'api_key', 'apikey', 'access_token', 'refresh_token',
+    "password",
+    "token",
+    "secret",
+    "key",
+    "auth",
+    "credential",
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
 }
 
 
@@ -103,26 +111,27 @@ def sanitize_value(value: Any, field_name: str = "", depth: int = 0) -> Any:
                 result[str(k)] = sanitize_value(v, field_name=str(k), depth=depth + 1)
             return result
         return {
-            str(k): sanitize_value(v, field_name=str(k), depth=depth + 1)
-            for k, v in value.items()
+            str(k): sanitize_value(v, field_name=str(k), depth=depth + 1) for k, v in value.items()
         }
 
     # Handle Pydantic models
-    if hasattr(value, 'model_dump'):
+    if hasattr(value, "model_dump"):
         try:
             data = value.model_dump()
             return {
                 "_type": type(value).__name__,
-                **{k: sanitize_value(v, field_name=k, depth=depth + 1)
-                   for k, v in list(data.items())[:MAX_COLLECTION_ITEMS]}
+                **{
+                    k: sanitize_value(v, field_name=k, depth=depth + 1)
+                    for k, v in list(data.items())[:MAX_COLLECTION_ITEMS]
+                },
             }
         except Exception:
             pass
 
     # Handle SQLAlchemy models
-    if hasattr(value, '__tablename__'):
+    if hasattr(value, "__tablename__"):
         result = {"_type": type(value).__name__}
-        if hasattr(value, 'id'):
+        if hasattr(value, "id"):
             result["id"] = str(value.id) if value.id else None
         return result
 
@@ -162,7 +171,7 @@ def build_input_summary(
         if i < len(params):
             param_name = params[i]
             # Skip 'self' and 'cls'
-            if param_name in ('self', 'cls'):
+            if param_name in ("self", "cls"):
                 continue
             if capture_args is None or param_name in capture_args:
                 result[param_name] = sanitize_value(arg, field_name=param_name)

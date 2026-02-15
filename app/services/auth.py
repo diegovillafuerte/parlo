@@ -2,7 +2,7 @@
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -25,9 +25,7 @@ def generate_magic_link_token() -> tuple[str, str]:
     return plain_token, hashed_token
 
 
-async def get_organization_by_phone(
-    db: AsyncSession, phone_number: str
-) -> Organization | None:
+async def get_organization_by_phone(db: AsyncSession, phone_number: str) -> Organization | None:
     """Get organization by phone number.
 
     Checks both the org's phone_number and owner staff phone numbers.
@@ -35,9 +33,7 @@ async def get_organization_by_phone(
     phone_number = normalize_phone_number(phone_number)
 
     # First try to match organization phone
-    result = await db.execute(
-        select(Organization).where(Organization.phone_number == phone_number)
-    )
+    result = await db.execute(select(Organization).where(Organization.phone_number == phone_number))
     org = result.scalar_one_or_none()
     if org:
         return org
@@ -61,9 +57,7 @@ async def get_organization_by_phone(
     return None
 
 
-async def create_magic_link_token(
-    db: AsyncSession, organization_id: UUID
-) -> tuple[str, AuthToken]:
+async def create_magic_link_token(db: AsyncSession, organization_id: UUID) -> tuple[str, AuthToken]:
     """Create a magic link token for an organization.
 
     Returns (plain_token, auth_token_model).
@@ -73,9 +67,7 @@ async def create_magic_link_token(
 
     plain_token, hashed_token = generate_magic_link_token()
 
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.magic_link_expire_minutes
-    )
+    expires_at = datetime.now(UTC) + timedelta(minutes=settings.magic_link_expire_minutes)
 
     auth_token = AuthToken(
         organization_id=organization_id,
@@ -100,9 +92,7 @@ async def verify_magic_link_token(
     """
     hashed_token = hashlib.sha256(plain_token.encode()).hexdigest()
 
-    result = await db.execute(
-        select(AuthToken).where(AuthToken.token_hash == hashed_token)
-    )
+    result = await db.execute(select(AuthToken).where(AuthToken.token_hash == hashed_token))
     auth_token = result.scalar_one_or_none()
 
     if auth_token is None:
@@ -111,7 +101,7 @@ async def verify_magic_link_token(
     if auth_token.used_at is not None:
         return None, "Token already used"
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if auth_token.expires_at <= now:
         return None, "Token expired"
 
@@ -138,9 +128,7 @@ async def verify_magic_link_token(
     return organization, access_token
 
 
-async def invalidate_organization_tokens(
-    db: AsyncSession, organization_id: UUID
-) -> None:
+async def invalidate_organization_tokens(db: AsyncSession, organization_id: UUID) -> None:
     """Invalidate all unused tokens for an organization (logout)."""
     result = await db.execute(
         select(AuthToken).where(
@@ -150,7 +138,7 @@ async def invalidate_organization_tokens(
     )
     tokens = result.scalars().all()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for token in tokens:
         token.used_at = now
 

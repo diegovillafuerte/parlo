@@ -19,13 +19,13 @@ Usage:
 """
 
 from app.services.tracing.context import (
-    start_trace_context,
-    get_correlation_id,
-    get_phone_number,
-    get_organization_id,
-    set_organization_id,
-    save_pending_traces,
     clear_trace_context,
+    get_correlation_id,
+    get_organization_id,
+    get_phone_number,
+    save_pending_traces,
+    set_organization_id,
+    start_trace_context,
 )
 from app.services.tracing.decorator import traced
 

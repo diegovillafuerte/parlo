@@ -6,26 +6,26 @@ and routing to provisioned business numbers.
 Updated to use Organization-based onboarding (no OnboardingSession).
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
+
 from app.models import (
+    Location,
     Organization,
     OrganizationStatus,
-    Location,
     ParloUser,
-    ParloUserRole,
     ParloUserPermissionLevel,
-    EndCustomer,
+    ParloUserRole,
 )
+from app.services.message_router import MessageRouter
 from app.services.onboarding import OnboardingState
 
 # Aliases for readability
 Staff = ParloUser
 StaffRole = ParloUserRole
-from app.services.message_router import MessageRouter
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,9 +33,7 @@ pytestmark = pytest.mark.asyncio
 class TestMessageRouterCase1:
     """Tests for Case 1: Unknown sender -> Business Onboarding."""
 
-    async def test_routes_unknown_sender_to_onboarding(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_routes_unknown_sender_to_onboarding(self, db, mock_whatsapp_client):
         """Unknown phone number on Parlo Central routes to onboarding flow."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
@@ -56,9 +54,7 @@ class TestMessageRouterCase1:
             assert result["route"] == "business_onboarding"
             mock_handler.assert_called_once()
 
-    async def test_creates_organization_for_new_user(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_creates_organization_for_new_user(self, db, mock_whatsapp_client):
         """Creates Organization for new user on first message."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
@@ -79,10 +75,9 @@ class TestMessageRouterCase1:
 
             # Verify organization was created (with ONBOARDING status)
             from sqlalchemy import select
+
             result = await db.execute(
-                select(Organization).where(
-                    Organization.phone_number == "+525559999888"
-                )
+                select(Organization).where(Organization.phone_number == "+525559999888")
             )
             org = result.scalar_one_or_none()
 
@@ -212,9 +207,7 @@ class TestMessageRouterBusinessNumberRouting:
             assert result["sender_type"] == "staff"
             mock_handler.assert_called_once()
 
-    async def test_unknown_number_routes_to_parlo_central(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_unknown_number_routes_to_parlo_central(self, db, mock_whatsapp_client):
         """Message to unknown number (Parlo Central) triggers onboarding."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
@@ -239,9 +232,7 @@ class TestMessageRouterBusinessNumberRouting:
 class TestMessageRouterDeduplication:
     """Tests for message deduplication."""
 
-    async def test_duplicate_message_is_skipped(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_duplicate_message_is_skipped(self, db, mock_whatsapp_client):
         """Duplicate message_id is not processed twice."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
@@ -276,9 +267,7 @@ class TestMessageRouterDeduplication:
 class TestMessageRouterWhatsAppResponse:
     """Tests for WhatsApp response sending."""
 
-    async def test_sends_whatsapp_response(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_sends_whatsapp_response(self, db, mock_whatsapp_client):
         """Response is sent via WhatsApp client."""
         router = MessageRouter(db=db, whatsapp_client=mock_whatsapp_client)
 
@@ -304,11 +293,9 @@ class TestMessageRouterWhatsAppResponse:
 class TestMessageRouterCompletedOnboarding:
     """Tests for handling completed onboarding."""
 
-    async def test_redirects_active_org_to_business_management(
-        self, db, mock_whatsapp_client
-    ):
+    async def test_redirects_active_org_to_business_management(self, db, mock_whatsapp_client):
         """Active organization redirects to business management."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create active organization with owner
         org = Organization(
@@ -344,7 +331,7 @@ class TestMessageRouterCompletedOnboarding:
             role=StaffRole.OWNER.value,
             permission_level=ParloUserPermissionLevel.OWNER.value,
             is_active=True,
-            first_message_at=datetime.now(timezone.utc),
+            first_message_at=datetime.now(UTC),
         )
         db.add(staff)
         await db.flush()
