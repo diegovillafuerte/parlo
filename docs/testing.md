@@ -152,6 +152,10 @@ All UI testing should be done **directly in production/staging** via Playwright 
    - No console errors
    - Interactive elements work (click through flows if needed)
 
+4. **Clean up after testing**:
+   - Delete any screenshot files saved to the repo directory after verification
+   - Screenshots are for transient verification only — never commit them
+
 ### URLs for Testing
 **Production:**
 - Admin Dashboard: `https://parlo-frontend.onrender.com/admin`
