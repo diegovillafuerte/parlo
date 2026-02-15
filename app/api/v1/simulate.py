@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.image_description import describe_image
 from app.api.admin_deps import require_admin
 from app.api.deps import get_db
 from app.config import get_settings
@@ -50,6 +51,20 @@ async def simulate_message(
     start_trace_context(phone_number=request.sender_phone)
 
     try:
+        # Process image if media_url provided
+        message_body = request.message_body
+        media_url: str | None = None
+        content_type = "text"
+
+        if request.media_url:
+            description = await describe_image(request.media_url, "image/jpeg")
+            image_tag = f"[Imagen enviada: {description}]"
+            message_body = (
+                f"{request.message_body}\n\n{image_tag}" if request.message_body else image_tag
+            )
+            media_url = request.media_url
+            content_type = "image"
+
         whatsapp_client = WhatsAppClient(mock_mode=True)
         message_router = MessageRouter(db=db, whatsapp_client=whatsapp_client)
 
@@ -57,8 +72,10 @@ async def simulate_message(
             phone_number_id=request.recipient_phone,
             sender_phone=request.sender_phone,
             message_id=message_id,
-            message_content=request.message_body,
+            message_content=message_body,
             sender_name=request.sender_name,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         await save_pending_traces(db)

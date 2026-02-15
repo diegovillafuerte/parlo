@@ -11,6 +11,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.image_description import describe_image
 from app.api.deps import get_db
 from app.config import get_settings
 from app.models import Organization
@@ -72,6 +73,8 @@ async def receive_twilio_webhook(
     Body: Annotated[str, Form()],
     ProfileName: Annotated[str | None, Form()] = None,
     NumMedia: Annotated[str | None, Form()] = None,
+    MediaUrl0: Annotated[str | None, Form()] = None,
+    MediaContentType0: Annotated[str | None, Form()] = None,
 ) -> PlainTextResponse:
     """Receive incoming WhatsApp messages from Twilio.
 
@@ -140,10 +143,25 @@ async def receive_twilio_webhook(
     logger.info(f"  TraceCorrelationId: {correlation_id}")
 
     try:
-        # Skip media-only messages for now
-        if NumMedia and int(NumMedia) > 0 and not Body:
-            logger.info("Skipping media-only message (no text)")
+        # Build message_content from Body + optional image description
+        message_content = Body or ""
+        media_url: str | None = None
+        content_type = "text"
+
+        has_media = NumMedia and int(NumMedia) > 0 and MediaUrl0
+        is_image = has_media and MediaContentType0 and MediaContentType0.startswith("image/")
+
+        if is_image:
+            description = await describe_image(MediaUrl0, MediaContentType0)
+            image_tag = f"[Imagen enviada: {description}]"
+            message_content = f"{Body}\n\n{image_tag}" if Body else image_tag
+            media_url = MediaUrl0
+            content_type = "image"
+        elif has_media and not Body:
+            # Non-image media with no text — skip
+            logger.info("Skipping non-image media-only message")
             return PlainTextResponse(content="", media_type="text/xml")
+        # else: non-image media with Body — process text only (message_content already set)
 
         # Initialize WhatsApp client
         mock_mode = not settings.twilio_account_sid
@@ -163,8 +181,10 @@ async def receive_twilio_webhook(
             phone_number_id=our_number,
             sender_phone=sender_phone,
             message_id=MessageSid,
-            message_content=Body,
+            message_content=message_content,
             sender_name=ProfileName,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         # Save all pending traces before commit

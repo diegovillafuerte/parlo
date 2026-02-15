@@ -579,6 +579,8 @@ class OnboardingHandler(ToolCallingMixin):
         org: Organization,
         message_content: str,
         message_id: str | None = None,
+        media_url: str | None = None,
+        content_type: str | None = None,
     ) -> str:
         """Handle an incoming message during onboarding.
 
@@ -612,6 +614,8 @@ class OnboardingHandler(ToolCallingMixin):
             MessageDirection.INBOUND,
             message_content,
             whatsapp_message_id=message_id,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         # Get history from Message table (always current)
@@ -725,6 +729,8 @@ class OnboardingHandler(ToolCallingMixin):
         direction: MessageDirection,
         content: str,
         whatsapp_message_id: str | None = None,
+        media_url: str | None = None,
+        content_type: str | None = None,
     ) -> Message:
         """Store message in Message table.
 
@@ -732,6 +738,9 @@ class OnboardingHandler(ToolCallingMixin):
             conversation_id: Conversation to store in
             direction: INBOUND or OUTBOUND
             content: Message content
+            whatsapp_message_id: WhatsApp message ID (optional)
+            media_url: URL of attached media (optional)
+            content_type: Message content type (optional)
 
         Returns:
             Created Message
@@ -746,9 +755,10 @@ class OnboardingHandler(ToolCallingMixin):
             conversation_id=conversation_id,
             direction=direction.value,
             sender_type=sender_type,
-            content_type=MessageContentType.TEXT.value,
+            content_type=content_type or MessageContentType.TEXT.value,
             content=content,
             whatsapp_message_id=whatsapp_message_id,
+            media_url=media_url,
         )
         self.db.add(message)
         await self.db.flush()

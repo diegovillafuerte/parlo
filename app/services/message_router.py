@@ -133,6 +133,8 @@ class MessageRouter:
         message_id: str,
         message_content: str,
         sender_name: str | None = None,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> dict[str, str]:
         """Route an incoming WhatsApp message using the 5-case decision tree.
 
@@ -176,6 +178,8 @@ class MessageRouter:
                 sender_name=sender_name,
                 message_id=message_id,
                 message_content=message_content,
+                media_url=media_url,
+                content_type=content_type,
             )
         else:
             # PARLO CENTRAL NUMBER FLOW (Cases 1, 2a, 2b)
@@ -185,6 +189,8 @@ class MessageRouter:
                 sender_name=sender_name,
                 message_id=message_id,
                 message_content=message_content,
+                media_url=media_url,
+                content_type=content_type,
             )
 
     @traced(capture_args=["sender_phone"])
@@ -195,6 +201,8 @@ class MessageRouter:
         sender_name: str | None,
         message_id: str,
         message_content: str,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> dict[str, str]:
         """Route message received on Parlo's central WhatsApp number.
 
@@ -229,6 +237,8 @@ class MessageRouter:
                 message_content=message_content,
                 sender_name=sender_name,
                 message_id=message_id,
+                media_url=media_url,
+                content_type=content_type,
             )
 
             await self._send_response(
@@ -262,7 +272,11 @@ class MessageRouter:
 
                 onboarding_handler = OnboardingHandler(db=self.db)
                 response_text = await onboarding_handler.handle_message(
-                    org, message_content, message_id=message_id
+                    org,
+                    message_content,
+                    message_id=message_id,
+                    media_url=media_url,
+                    content_type=content_type,
                 )
 
                 # Check if onboarding just completed
@@ -304,6 +318,8 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
+                media_url=media_url,
+                content_type=content_type,
             )
 
             await self._send_response(
@@ -369,6 +385,8 @@ class MessageRouter:
         sender_name: str | None,
         message_id: str,
         message_content: str,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> dict[str, str]:
         """Route message received on a business's own WhatsApp number.
 
@@ -411,6 +429,8 @@ class MessageRouter:
                     message_content=message_content,
                     sender_phone=sender_phone,
                     message_id=message_id,
+                    media_url=media_url,
+                    content_type=content_type,
                 )
 
                 sender_type = MessageSenderType.STAFF
@@ -456,6 +476,8 @@ class MessageRouter:
                             message_content=message_content,
                             sender_phone=sender_phone,
                             message_id=message_id,
+                            media_url=media_url,
+                            content_type=content_type,
                         )
                     else:
                         # Use existing staff conversation
@@ -527,6 +549,8 @@ class MessageRouter:
                         message_content=message_content,
                         sender_phone=sender_phone,
                         message_id=message_id,
+                        media_url=media_url,
+                        content_type=content_type,
                     )
 
                 sender_type = MessageSenderType.STAFF
@@ -558,6 +582,8 @@ class MessageRouter:
                     sender_type=MessageSenderType.CUSTOMER,
                     content=message_content,
                     whatsapp_message_id=message_id,
+                    media_url=media_url,
+                    content_type=content_type,
                 )
 
                 await handoff_service.relay_customer_to_owner(
@@ -584,6 +610,8 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
+                media_url=media_url,
+                content_type=content_type,
             )
 
             sender_type = MessageSenderType.CUSTOMER
@@ -631,6 +659,8 @@ class MessageRouter:
         message_content: str,
         sender_name: str | None,
         message_id: str,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> str:
         """Handle message from user in business onboarding flow (Case 1).
 
@@ -671,12 +701,18 @@ class MessageRouter:
                     message_content=message_content,
                     sender_phone=sender_phone,
                     message_id=message_id,
+                    media_url=media_url,
+                    content_type=content_type,
                 )
                 return response_text
 
         # Continue onboarding conversation
         response = await onboarding_handler.handle_message(
-            org, message_content, message_id=message_id
+            org,
+            message_content,
+            message_id=message_id,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         # Check if onboarding just completed
@@ -695,6 +731,8 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> tuple[str, UUID]:
         """Handle first message from pre-registered staff (Case 3).
 
@@ -722,6 +760,8 @@ class MessageRouter:
             sender_type=MessageSenderType.STAFF,
             content=message_content,
             whatsapp_message_id=message_id,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         # Use the staff onboarding handler
@@ -742,6 +782,8 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
+                media_url=media_url,
+                content_type=content_type,
             )
             return response_text, conversation.id
 
@@ -761,6 +803,8 @@ class MessageRouter:
                 message_content=message_content,
                 sender_phone=sender_phone,
                 message_id=message_id,
+                media_url=media_url,
+                content_type=content_type,
             )
             return response_text, conversation.id
 
@@ -774,6 +818,8 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> tuple[str, UUID]:
         """Handle message from staff member for business management (Cases 2a, 4).
 
@@ -798,6 +844,8 @@ class MessageRouter:
             sender_type=MessageSenderType.STAFF,
             content=message_content,
             whatsapp_message_id=message_id,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         # Use AI conversation handler
@@ -823,6 +871,8 @@ class MessageRouter:
         message_content: str,
         sender_phone: str,
         message_id: str,
+        media_url: str | None = None,
+        content_type: str = "text",
     ) -> tuple[str, UUID]:
         """Handle message from end customer (Case 5).
 
@@ -854,6 +904,8 @@ class MessageRouter:
             sender_type=MessageSenderType.CUSTOMER,
             content=message_content,
             whatsapp_message_id=message_id,
+            media_url=media_url,
+            content_type=content_type,
         )
 
         # Use CustomerFlowHandler for state-tracked customer conversations
@@ -1016,6 +1068,8 @@ class MessageRouter:
         sender_type: MessageSenderType,
         content: str,
         whatsapp_message_id: str | None = None,
+        media_url: str | None = None,
+        content_type: str | None = None,
     ) -> Message:
         """Store message in database.
 
@@ -1025,6 +1079,8 @@ class MessageRouter:
             sender_type: Customer, staff, or AI
             content: Message content
             whatsapp_message_id: WhatsApp message ID (optional)
+            media_url: URL of attached media (optional)
+            content_type: Message content type — "text", "image", etc. (optional)
 
         Returns:
             Created message
@@ -1033,9 +1089,10 @@ class MessageRouter:
             conversation_id=conversation_id,
             direction=direction.value,
             sender_type=sender_type.value,
-            content_type=MessageContentType.TEXT.value,
+            content_type=content_type or MessageContentType.TEXT.value,
             content=content,
             whatsapp_message_id=whatsapp_message_id,
+            media_url=media_url,
         )
         self.db.add(message)
         await self.db.flush()

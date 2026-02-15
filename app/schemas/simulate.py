@@ -10,6 +10,7 @@ class SimulateMessageRequest(BaseModel):
     recipient_phone: str  # Parlo Central number or business number
     message_body: str
     sender_name: str | None = None
+    media_url: str | None = None  # Public image URL to include
 
 
 class SimulateMessageResponse(BaseModel):
