@@ -253,14 +253,14 @@ NEXT_PUBLIC_PARLO_WHATSAPP_NUMBER=17759674528
 - Twilio WhatsApp integration (send/receive messages)
 - Twilio number provisioning for businesses
 - Function-level tracing with @traced decorator and admin log viewer
+- Handoff-to-human WhatsApp relay (AI pauses, owner notified, bidirectional message relay, LLM intent classifier for end detection, 30-min auto-timeout)
+- New booking notifications to owner (WhatsApp notification after AI booking)
+- Business hours in AI prompts (reads actual location hours, not placeholder)
 
 ### Partially Implemented
 - WhatsApp template messages (fall back to regular text — need Twilio Content setup)
 - Daily schedule summaries (task not yet created)
-- New booking notifications to owner (not sent after AI booking)
-- handoff_to_human tool (acknowledges but doesn't actually notify owner)
 - Staff conversation persistence (each message starts fresh, no history)
-- Business hours in AI prompts (returns placeholder, not actual location hours)
 
 ### Not Implemented
 - Create/Edit appointment modals in dashboard (deferred — most bookings via WhatsApp)
@@ -282,6 +282,7 @@ NEXT_PUBLIC_PARLO_WHATSAPP_NUMBER=17759674528
 | `app/services/scheduling.py` | Availability calculation + conflict validation |
 | `app/services/onboarding.py` | WhatsApp onboarding flow for new businesses |
 | `app/services/customer_flows.py` | Customer booking/cancel/modify state machines |
+| `app/services/handoff.py` | Handoff-to-human WhatsApp relay service |
 | `app/services/staff_onboarding.py` | Staff WhatsApp onboarding flow |
 | `app/services/ai_handler_base.py` | Shared base for AI conversation handlers |
 | `app/ai/tools.py` | AI tool definitions + execution (~1590 lines) |
