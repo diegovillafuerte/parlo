@@ -85,14 +85,63 @@ class WhatsAppClient:
             from_number=from_number or phone_number_id or None,
         )
 
+    @traced(trace_type="external_api", capture_args=["to"])
+    async def send_media_message(
+        self,
+        phone_number_id: str,
+        to: str,
+        message: str,
+        media_url: str,
+        from_number: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a media message via WhatsApp using Twilio.
+
+        Args:
+            phone_number_id: Phone number ID (used for routing, not for sending)
+            to: Recipient's phone number
+            message: Message body text
+            media_url: URL of the media to attach (e.g. vCard, image)
+            from_number: Override sender number
+
+        Returns:
+            Response from Twilio API (or mock response)
+        """
+        if self.mock_mode:
+            from_display = from_number or self.from_number or phone_number_id
+            logger.info(
+                f"📱 [MOCK] Sending WhatsApp media message:\n"
+                f"  From: {from_display}\n"
+                f"  To: {to}\n"
+                f"  Message: {message}\n"
+                f"  MediaUrl: {media_url}"
+            )
+            return {
+                "sid": f"mock_media_{uuid.uuid4().hex}",
+                "status": "queued",
+                "to": to,
+                "from": from_display,
+            }
+
+        return await self._send_via_twilio(
+            to=to,
+            message=message,
+            from_number=from_number or phone_number_id or None,
+            media_url=media_url,
+        )
+
     async def _send_via_twilio(
-        self, to: str, message: str, from_number: str | None = None
+        self,
+        to: str,
+        message: str,
+        from_number: str | None = None,
+        media_url: str | None = None,
     ) -> dict[str, Any]:
         """Send message via Twilio API (Parlo's main number).
 
         Args:
             to: Recipient's phone number
             message: Message content
+            media_url: Optional URL of media to attach
 
         Returns:
             Response from Twilio API
@@ -111,6 +160,8 @@ class WhatsAppClient:
             "To": to_formatted,
             "Body": message,
         }
+        if media_url:
+            data["MediaUrl"] = media_url
 
         try:
             response = await self.client.post(

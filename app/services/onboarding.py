@@ -983,6 +983,7 @@ class OnboardingHandler(ToolCallingMixin):
                         webhook_base_url=_settings.app_base_url,
                         country_code="US",
                         db=self.db,
+                        about_text=f"Agenda tu cita en {collected['business_name']} por WhatsApp",
                     )
                     if result:
                         collected["twilio_provisioned_number"] = result["phone_number"]
@@ -1093,6 +1094,7 @@ class OnboardingHandler(ToolCallingMixin):
                     webhook_base_url=_settings.app_base_url,
                     country_code=country_code,
                     db=self.db,
+                    about_text=f"Agenda tu cita en {business_name} por WhatsApp",
                 )
 
                 if result:

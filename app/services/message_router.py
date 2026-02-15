@@ -568,6 +568,9 @@ class MessageRouter:
                 f"   → Routing to End Customer Handler"
             )
 
+            # Send vCard on first interaction so customer can save the business contact
+            await self._maybe_send_vcard(org, customer, phone_number_id)
+
             # Check if customer has an active handoff — relay to owner instead of AI
             customer_conversation = await self._get_or_create_conversation(org.id, customer.id)
             if customer_conversation.status == ConversationStatus.HANDED_OFF.value:
@@ -926,6 +929,45 @@ class MessageRouter:
     # ==========================================================================
     # Helper methods
     # ==========================================================================
+
+    async def _maybe_send_vcard(
+        self,
+        org: Organization,
+        customer: EndCustomer,
+        phone_number_id: str,
+    ) -> None:
+        """Send a vCard to the customer on their first interaction.
+
+        Uses customer.settings["vcard_sent"] to track whether the vCard
+        has already been sent. Failures are logged but never block the
+        main conversation flow.
+        """
+        try:
+            customer_settings = customer.settings or {}
+            if customer_settings.get("vcard_sent"):
+                return
+
+            settings = get_settings()
+            from_number = resolve_whatsapp_sender(org) or phone_number_id
+            vcard_url = f"{settings.app_base_url}/api/v1/public/vcard/{org.id}"
+            business_name = org.name or "tu negocio"
+
+            await self.whatsapp.send_media_message(
+                phone_number_id=phone_number_id,
+                to=customer.phone_number,
+                message=f"Hola, soy {business_name}. Guarda mi contacto para encontrarme siempre.",
+                media_url=vcard_url,
+                from_number=from_number,
+            )
+
+            # Mark as sent so we don't resend
+            if customer.settings is None:
+                customer.settings = {}
+            customer.settings = {**customer.settings, "vcard_sent": True}
+            await self.db.flush()
+            logger.info(f"   📇 vCard sent to customer {customer.phone_number}")
+        except Exception:
+            logger.exception("Failed to send vCard — continuing without it")
 
     async def _find_org_by_whatsapp_phone_id(self, phone_number_id: str) -> Organization | None:
         """Find organization by WhatsApp phone number ID or business phone number.

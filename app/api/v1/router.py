@@ -10,6 +10,7 @@ from app.api.v1 import (
     customers,
     locations,
     organizations,
+    public,
     services,
     simulate,
     spots,
@@ -31,6 +32,9 @@ router.include_router(customers.router)
 router.include_router(appointments.router)
 router.include_router(availability.router)
 router.include_router(webhooks.router)
+
+# Public endpoints - no auth required (e.g. vCard for Twilio)
+router.include_router(public.router)
 
 # Simulation endpoints - admin-auth protected, available in all environments
 router.include_router(simulate.router)

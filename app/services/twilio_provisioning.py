@@ -154,6 +154,7 @@ class TwilioProvisioningService:
         business_name: str,
         callback_url: str | None = None,
         status_callback_url: str | None = None,
+        about_text: str | None = None,
     ) -> dict[str, Any] | None:
         """Register a phone number as WhatsApp sender under Parlo's WABA.
 
@@ -164,6 +165,7 @@ class TwilioProvisioningService:
             business_name: Display name for WhatsApp (must follow Meta guidelines)
             callback_url: Webhook for incoming WhatsApp messages
             status_callback_url: Webhook for status updates (sender state changes)
+            about_text: Short "about" text for the WhatsApp business profile
 
         Returns:
             Sender details including sid, status, or None on failure
@@ -175,14 +177,16 @@ class TwilioProvisioningService:
 
         sender_id = f"whatsapp:{phone_number}"
 
+        profile: dict[str, str] = {"name": business_name}
+        if about_text:
+            profile["about"] = about_text
+
         payload = {
             "sender_id": sender_id,
             "configuration": {
                 "waba_id": self.waba_id,
             },
-            "profile": {
-                "name": business_name,
-            },
+            "profile": profile,
         }
 
         webhook = {}
@@ -212,6 +216,53 @@ class TwilioProvisioningService:
             if hasattr(e, "response") and e.response is not None:
                 logger.error(f"Response: {e.response.text}")
             return None
+
+    @traced(trace_type="external_api", capture_args=["sender_sid"])
+    async def update_sender_profile(
+        self,
+        sender_sid: str,
+        business_name: str | None = None,
+        about_text: str | None = None,
+    ) -> bool:
+        """Update the profile of an existing WhatsApp sender.
+
+        Args:
+            sender_sid: The Twilio sender SID
+            business_name: New display name (optional)
+            about_text: New about text (optional)
+
+        Returns:
+            True if successful
+        """
+        if not self.is_configured:
+            return False
+
+        profile: dict[str, str] = {}
+        if business_name:
+            profile["name"] = business_name
+        if about_text:
+            profile["about"] = about_text
+
+        if not profile:
+            return True  # Nothing to update
+
+        url = f"{self.senders_url}/{sender_sid}"
+        payload = {"profile": profile}
+
+        try:
+            response = await self.client.post(
+                url,
+                json=payload,
+                auth=(self.account_sid, self.auth_token),
+            )
+            response.raise_for_status()
+            logger.info(f"Updated profile for sender {sender_sid}")
+            return True
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to update sender profile: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                logger.error(f"Response: {e.response.text}")
+            return False
 
     @traced(trace_type="external_api", capture_args=["sender_sid"])
     async def get_sender_status(self, sender_sid: str) -> dict[str, Any] | None:
@@ -446,6 +497,7 @@ async def provision_number_for_business(
     webhook_base_url: str,
     country_code: str = "US",
     db=None,
+    about_text: str | None = None,
 ) -> dict[str, Any] | None:
     """Provision a phone number for a business and register for WhatsApp.
 
@@ -482,6 +534,7 @@ async def provision_number_for_business(
                         business_name=business_name,
                         callback_url=callback_url,
                         status_callback_url=status_callback_url,
+                        about_text=about_text,
                     )
                     if sender:
                         return {
@@ -548,6 +601,7 @@ async def provision_number_for_business(
                 business_name=business_name,
                 callback_url=callback_url,
                 status_callback_url=status_callback_url,
+                about_text=about_text,
             )
 
             if not sender:
