@@ -25,6 +25,10 @@ PERMISSION_MATRIX: dict[str, list[str]] = {
     # Time management
     "block_own_time": ["owner", "admin", "staff"],
     "block_time": ["owner", "admin", "staff"],
+    "set_own_availability": ["owner", "admin", "staff"],
+    "request_day_off": ["owner", "admin", "staff"],
+    # Rescheduling
+    "reschedule_appointment": ["owner", "admin", "staff"],
     # Customer management
     "get_customer_history": ["owner", "admin", "staff"],
     # Statistics (owner/admin only)
@@ -51,6 +55,9 @@ TOOL_PERMISSION_MAP: dict[str, str] = {
     "book_walk_in": "book_walk_in",
     "get_customer_history": "get_customer_history",
     "cancel_customer_appointment": "cancel_appointment",
+    "set_my_availability": "set_own_availability",
+    "request_day_off": "request_day_off",
+    "reschedule_customer_appointment": "reschedule_appointment",
     # Future tools
     "add_staff_member": "add_staff",
     "remove_staff_member": "remove_staff",
@@ -118,6 +125,9 @@ def get_permission_denied_message(action: str, staff: "ParloUser") -> str:
         "change_service_durations": "cambiar duración de servicios",
         "modify_services": "modificar servicios",
         "view_full_schedule": "ver la agenda completa del negocio",
+        "set_own_availability": "configurar tu horario",
+        "request_day_off": "pedir días libres",
+        "reschedule_appointment": "reagendar citas",
     }
 
     action_desc = action_descriptions.get(action, action)

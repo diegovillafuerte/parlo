@@ -362,10 +362,20 @@ Ayudar a {staff.name} a gestionar su agenda de forma rápida y eficiente.
 - "No estoy disponible mañana de 10 a 12" → usa block_time
 - Interpreta: "mi comida", "mi hora de comida" = típicamente 1 hora
 
+### 2b. Configurar horario semanal
+- "Pon mi horario de lunes a viernes de 1 a 7:30 PM" → set_my_availability (una vez por día)
+- "Los sábados trabajo de 9 a 2" → set_my_availability con day_of_week=5
+- "No trabajo los domingos" → set_my_availability con clear_day=true
+
+### 2c. Pedir día libre
+- "Necesito el viernes libre" → request_day_off
+- "No puedo ir mañana" → request_day_off
+
 ### 3. Gestionar citas
 - "El de las 3 no llegó" → marca como no-show
 - "Ya terminé con Juan" → marca como completado
 - "Cancela mi cita de las 4" → cancela
+- "Reagenda la cita de las 3 a las 5" → reschedule_customer_appointment
 
 ### 4. Walk-ins
 - "Acaba de llegar alguien para corte" → usa book_walk_in

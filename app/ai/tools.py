@@ -338,6 +338,73 @@ STAFF_TOOLS = [
             "required": ["appointment_id"],
         },
     },
+    # Availability & schedule management tools
+    {
+        "name": "set_my_availability",
+        "description": "Configura el horario semanal recurrente del empleado para un día de la semana. Llama esta herramienta una vez por cada día que quieras configurar. Ejemplo: 'lunes a viernes de 1 a 7:30 PM' = 5 llamadas con day_of_week 0-4.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "day_of_week": {
+                    "type": "integer",
+                    "description": "Día de la semana: 0=Lunes, 1=Martes, 2=Miércoles, 3=Jueves, 4=Viernes, 5=Sábado, 6=Domingo",
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "Hora de inicio en formato HH:MM (24h). Ej: '13:00' para 1 PM",
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "Hora de fin en formato HH:MM (24h). Ej: '19:30' para 7:30 PM",
+                },
+                "clear_day": {
+                    "type": "boolean",
+                    "description": "Si es true, elimina el horario para ese día (no trabaja ese día). No requiere start_time/end_time.",
+                },
+            },
+            "required": ["day_of_week"],
+        },
+    },
+    {
+        "name": "request_day_off",
+        "description": "Pide un día libre específico. Bloquea el día completo como no disponible. Avisa si hay citas programadas ese día.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Fecha del día libre en formato YYYY-MM-DD",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Razón del día libre (opcional)",
+                },
+            },
+            "required": ["date"],
+        },
+    },
+    {
+        "name": "reschedule_customer_appointment",
+        "description": "Reagenda una cita de un cliente a un nuevo horario. Verifica conflictos automáticamente.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "appointment_id": {
+                    "type": "string",
+                    "description": "ID de la cita a reagendar",
+                },
+                "new_start_time": {
+                    "type": "string",
+                    "description": "Nueva fecha y hora en formato ISO (YYYY-MM-DDTHH:MM:SS)",
+                },
+                "notify_customer": {
+                    "type": "boolean",
+                    "description": "¿Enviar mensaje al cliente? (por defecto: true)",
+                },
+            },
+            "required": ["appointment_id", "new_start_time"],
+        },
+    },
     # Owner/Admin management tools
     {
         "name": "get_business_stats",
@@ -569,6 +636,9 @@ class ToolHandler:
             "book_walk_in": lambda inp: self._book_walk_in(inp, staff),
             "get_customer_history": self._get_customer_history,
             "cancel_customer_appointment": self._cancel_customer_appointment,
+            "set_my_availability": lambda inp: self._set_my_availability(inp, staff),
+            "request_day_off": lambda inp: self._request_day_off(inp, staff),
+            "reschedule_customer_appointment": self._reschedule_customer_appointment,
             # Management tools (owner/admin)
             "get_business_stats": self._get_business_stats,
             "add_staff_member": lambda inp: self._add_staff_member(inp, staff),
@@ -1720,6 +1790,248 @@ class ToolHandler:
 
         if notify_customer:
             # TODO: Send notification to customer via WhatsApp
+            result["notification"] = "Se notificará al cliente"
+
+        return result
+
+    # -------------------------------------------------------------------------
+    # Availability & Schedule Management Tool Implementations
+    # -------------------------------------------------------------------------
+
+    async def _set_my_availability(
+        self, tool_input: dict[str, Any], staff: Staff | None
+    ) -> dict[str, Any]:
+        """Set recurring weekly availability for a specific day."""
+        if not staff:
+            return {"error": "No se pudo identificar al empleado"}
+
+        day_of_week = tool_input.get("day_of_week")
+        start_time_str = tool_input.get("start_time")
+        end_time_str = tool_input.get("end_time")
+        clear_day = tool_input.get("clear_day", False)
+
+        if day_of_week is None or not (0 <= day_of_week <= 6):
+            return {"error": "day_of_week debe ser entre 0 (lunes) y 6 (domingo)"}
+
+        day_names = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+        day_name = day_names[day_of_week]
+
+        # Delete existing recurring availability for this day
+        from sqlalchemy import delete
+
+        await self.db.execute(
+            delete(Availability).where(
+                Availability.parlo_user_id == staff.id,
+                Availability.type == AvailabilityType.RECURRING.value,
+                Availability.day_of_week == day_of_week,
+            )
+        )
+
+        if clear_day:
+            await self.db.flush()
+            return {
+                "success": True,
+                "message": f"Horario del {day_name} eliminado. No trabajas ese día.",
+            }
+
+        # Validate times
+        if not start_time_str or not end_time_str:
+            return {"error": "start_time y end_time son requeridos (o usa clear_day=true)"}
+
+        from datetime import time as dt_time
+
+        try:
+            parts = start_time_str.split(":")
+            start_t = dt_time(int(parts[0]), int(parts[1]))
+            parts = end_time_str.split(":")
+            end_t = dt_time(int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            return {"error": "Formato de hora inválido. Usa HH:MM (ej: '13:00', '19:30')"}
+
+        if start_t >= end_t:
+            return {"error": "La hora de inicio debe ser antes de la hora de fin"}
+
+        # Create new recurring availability
+        availability = Availability(
+            parlo_user_id=staff.id,
+            type=AvailabilityType.RECURRING.value,
+            day_of_week=day_of_week,
+            start_time=start_t,
+            end_time=end_t,
+        )
+        self.db.add(availability)
+        await self.db.flush()
+
+        return {
+            "success": True,
+            "message": f"Horario del {day_name} configurado: {start_time_str} a {end_time_str}",
+            "day": day_name,
+            "start_time": start_time_str,
+            "end_time": end_time_str,
+        }
+
+    async def _request_day_off(
+        self, tool_input: dict[str, Any], staff: Staff | None
+    ) -> dict[str, Any]:
+        """Request a full day off."""
+        if not staff:
+            return {"error": "No se pudo identificar al empleado"}
+
+        date_str = tool_input.get("date", "")
+        reason = tool_input.get("reason", "")
+
+        try:
+            day_off = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return {"error": "Formato de fecha inválido. Usa YYYY-MM-DD"}
+
+        # Delete any existing exceptions for this date to avoid scalar_one_or_none crash
+        # in scheduling.py when multiple exceptions exist for the same date
+        from sqlalchemy import delete
+
+        await self.db.execute(
+            delete(Availability).where(
+                Availability.parlo_user_id == staff.id,
+                Availability.type == AvailabilityType.EXCEPTION.value,
+                Availability.exception_date == day_off,
+            )
+        )
+
+        # Create full-day unavailable exception
+        availability = Availability(
+            parlo_user_id=staff.id,
+            type=AvailabilityType.EXCEPTION.value,
+            exception_date=day_off,
+            is_available=False,
+            start_time=None,
+            end_time=None,
+        )
+        self.db.add(availability)
+        await self.db.flush()
+
+        # Check for existing appointments on that day
+        org_tz = self._get_org_tz()
+        day_start = datetime.combine(day_off, datetime.min.time()).replace(tzinfo=org_tz)
+        day_end = datetime.combine(day_off, datetime.max.time()).replace(tzinfo=org_tz)
+        day_start_utc = day_start.astimezone(UTC)
+        day_end_utc = day_end.astimezone(UTC)
+
+        result = await self.db.execute(
+            select(Appointment).where(
+                Appointment.parlo_user_id == staff.id,
+                Appointment.scheduled_start >= day_start_utc,
+                Appointment.scheduled_start <= day_end_utc,
+                Appointment.status.in_(
+                    [
+                        AppointmentStatus.PENDING.value,
+                        AppointmentStatus.CONFIRMED.value,
+                    ]
+                ),
+            )
+        )
+        existing_appointments = result.scalars().all()
+
+        day_names = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+        day_name = day_names[day_off.weekday()]
+
+        response: dict[str, Any] = {
+            "success": True,
+            "message": f"Día libre registrado: {day_name} {date_str}",
+        }
+
+        if reason:
+            response["reason"] = reason
+
+        if existing_appointments:
+            apt_list = []
+            for apt in existing_appointments:
+                service = await self.db.get(ServiceType, apt.service_type_id)
+                local_start = self._to_local(apt.scheduled_start)
+                apt_list.append(
+                    f"{local_start.strftime('%I:%M %p')} - {service.name if service else 'Cita'}"
+                )
+            response["warning"] = (
+                f"⚠️ Tienes {len(existing_appointments)} cita(s) ese día que NO fueron canceladas:"
+            )
+            response["appointments_on_day"] = apt_list
+
+        return response
+
+    async def _reschedule_customer_appointment(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+        """Reschedule a customer's appointment (staff-side)."""
+        appointment_id = tool_input.get("appointment_id", "")
+        new_start_time_str = tool_input.get("new_start_time", "")
+        notify_customer = tool_input.get("notify_customer", True)
+
+        try:
+            apt_uuid = UUID(appointment_id)
+            new_start_time = datetime.fromisoformat(new_start_time_str)
+            new_start_time = self._to_utc(new_start_time)
+        except ValueError:
+            return {"error": "Parámetros inválidos"}
+
+        appointment = await self.db.get(Appointment, apt_uuid)
+        if not appointment or appointment.organization_id != self.org.id:
+            return {"error": "Cita no encontrada"}
+
+        # Only reschedule active appointments
+        if appointment.status not in [
+            AppointmentStatus.PENDING.value,
+            AppointmentStatus.CONFIRMED.value,
+        ]:
+            return {"error": f"No se puede reagendar una cita con estado '{appointment.status}'"}
+
+        # Get service duration
+        service = await self.db.get(ServiceType, appointment.service_type_id)
+        if not service:
+            return {"error": "Servicio no encontrado"}
+
+        new_end_time = new_start_time + timedelta(minutes=service.duration_minutes)
+
+        # Check for conflicts (exclude current appointment from check)
+        conflicts = await scheduling_service.check_appointment_conflicts(
+            db=self.db,
+            organization_id=self.org.id,
+            staff_id=appointment.parlo_user_id,
+            spot_id=appointment.spot_id,
+            start_time=new_start_time,
+            end_time=new_end_time,
+            exclude_appointment_id=apt_uuid,
+        )
+
+        if conflicts:
+            conflict = conflicts[0]
+            conflict_time = self._to_local(conflict.scheduled_start).strftime("%I:%M %p")
+            return {
+                "error": f"El nuevo horario no está disponible. Ya hay una cita a las {conflict_time}.",
+                "suggestion": "Por favor elige otro horario.",
+            }
+
+        old_start = self._to_local(appointment.scheduled_start)
+        appointment.scheduled_start = new_start_time
+        appointment.scheduled_end = new_end_time
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            return {
+                "error": "El nuevo horario no está disponible.",
+                "suggestion": "Por favor elige otro horario.",
+            }
+
+        local_new = self._to_local(new_start_time)
+
+        result: dict[str, Any] = {
+            "success": True,
+            "message": "Cita reagendada ✓",
+            "old_date": old_start.strftime("%A %d de %B"),
+            "old_time": old_start.strftime("%I:%M %p"),
+            "new_date": local_new.strftime("%A %d de %B"),
+            "new_time": local_new.strftime("%I:%M %p"),
+            "service": service.name,
+        }
+
+        if notify_customer:
             result["notification"] = "Se notificará al cliente"
 
         return result
