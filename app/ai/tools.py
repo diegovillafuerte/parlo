@@ -405,6 +405,15 @@ STAFF_TOOLS = [
             "required": ["appointment_id", "new_start_time"],
         },
     },
+    # Portal access
+    {
+        "name": "get_portal_link",
+        "description": "Genera un enlace de acceso al portal web del negocio. El enlace es temporal y expira en 15 minutos.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
     # Owner/Admin management tools
     {
         "name": "get_business_stats",
@@ -639,6 +648,7 @@ class ToolHandler:
             "set_my_availability": lambda inp: self._set_my_availability(inp, staff),
             "request_day_off": lambda inp: self._request_day_off(inp, staff),
             "reschedule_customer_appointment": self._reschedule_customer_appointment,
+            "get_portal_link": self._get_portal_link,
             # Management tools (owner/admin)
             "get_business_stats": self._get_business_stats,
             "add_staff_member": lambda inp: self._add_staff_member(inp, staff),
@@ -2092,6 +2102,21 @@ class ToolHandler:
             )
 
         return result
+
+    async def _get_portal_link(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+        """Generate a temporary portal access link."""
+        from app.config import get_settings
+        from app.services.auth import create_magic_link_token
+
+        settings = get_settings()
+        plain_token, _ = await create_magic_link_token(self.db, self.org.id)
+        portal_url = f"{settings.frontend_url}/verify?token={plain_token}"
+
+        return {
+            "success": True,
+            "portal_url": portal_url,
+            "expires_in_minutes": settings.magic_link_expire_minutes,
+        }
 
     # -------------------------------------------------------------------------
     # Management Tool Implementations (Owner/Admin)
