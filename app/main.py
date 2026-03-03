@@ -46,8 +46,10 @@ app = FastAPI(
 # CORS middleware
 # Build allowed origins list
 allowed_origins = [
-    settings.frontend_url,  # Render frontend URL or local
+    settings.frontend_url,  # Production frontend URL or local
     "http://localhost:3000",  # Local development
+    "https://parlo.mx",  # Custom domain
+    "https://www.parlo.mx",  # Custom domain (www)
 ]
 
 # Add Render preview deployments in production

@@ -32,7 +32,7 @@ services:
       - key: ADMIN_MASTER_PASSWORD
         sync: false  # Must set manually in dashboard
       - key: FRONTEND_URL
-        sync: false  # Set manually: https://parlo-frontend.onrender.com
+        sync: false  # Set manually: https://parlo.mx
       - key: TWILIO_ACCOUNT_SID
         sync: false  # Must set manually in dashboard
       - key: TWILIO_AUTH_TOKEN
