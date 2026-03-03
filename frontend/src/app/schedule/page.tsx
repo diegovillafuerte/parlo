@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { format, addDays, subDays, startOfDay, parseISO, differenceInMinutes } from 'date-fns';
+import { format, addDays, subDays, startOfDay, parseISO, differenceInMinutes, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/providers/AuthProvider';
+import { useLocation } from '@/providers/LocationProvider';
 import { getAppointments, cancelAppointment, completeAppointment, markNoShow } from '@/lib/api/appointments';
 import { getStaffList } from '@/lib/api/staff';
 import { Appointment, Staff } from '@/lib/types';
@@ -20,14 +21,12 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 const HOUR_HEIGHT = 60; // px per hour
-const START_HOUR = 8;
-const END_HOUR = 20;
-const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 export default function SchedulePage() {
   const { organization } = useAuth();
+  const { selectedLocation } = useLocation();
   const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
-  const [viewMode, setViewMode] = useState<ViewMode>('calendar');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
@@ -117,6 +116,13 @@ export default function SchedulePage() {
     }
   };
 
+  // Compute calendar hours from business hours
+  const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+  const dayKey = dayKeys[selectedDate.getDay()];
+  const dayHours = selectedLocation?.business_hours?.[dayKey];
+  const startHour = dayHours ? parseInt(dayHours.open.split(':')[0], 10) : 8;
+  const endHour = dayHours ? parseInt(dayHours.close.split(':')[0], 10) : 20;
+
   // Split into active vs recent changes
   const activeAppointments = appointments.filter(
     (apt) => apt.status === 'pending' || apt.status === 'confirmed'
@@ -132,9 +138,6 @@ export default function SchedulePage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Agenda</h1>
-            <p className="text-gray-600">
-              {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
-            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -189,12 +192,19 @@ export default function SchedulePage() {
             </svg>
           </button>
 
-          <button
-            onClick={goToToday}
-            className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition"
-          >
-            Hoy
-          </button>
+          <div className="flex items-center">
+            <span className="text-sm font-medium text-gray-900 capitalize">
+              {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+            </span>
+            {!isToday(selectedDate) && (
+              <button
+                onClick={goToToday}
+                className="ml-2 text-xs text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition"
+              >
+                Hoy
+              </button>
+            )}
+          </div>
 
           <button
             onClick={goToNextDay}
@@ -237,6 +247,8 @@ export default function SchedulePage() {
             staff={staff}
             onCancel={handleCancel}
             actionLoading={actionLoading}
+            startHour={startHour}
+            endHour={endHour}
           />
         ) : (
           <ListView
@@ -263,9 +275,10 @@ interface ViewProps {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CalendarView({ date, appointments, staff, onCancel, actionLoading }: { date: Date; appointments: Appointment[]; staff: Staff[]; onCancel: (id: string) => void; actionLoading: string | null }) {
-  const timeLabels = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => {
-    const hour = START_HOUR + i;
+function CalendarView({ date, appointments, staff, onCancel, actionLoading, startHour, endHour }: { date: Date; appointments: Appointment[]; staff: Staff[]; onCancel: (id: string) => void; actionLoading: string | null; startHour: number; endHour: number }) {
+  const totalHours = endHour - startHour;
+  const timeLabels = Array.from({ length: totalHours + 1 }, (_, i) => {
+    const hour = startHour + i;
     return { hour, label: `${hour.toString().padStart(2, '0')}:00` };
   });
 
@@ -276,10 +289,10 @@ function CalendarView({ date, appointments, staff, onCancel, actionLoading }: { 
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div className="relative" style={{ height: `${TOTAL_HOURS * HOUR_HEIGHT}px` }}>
+      <div className="relative" style={{ height: `${totalHours * HOUR_HEIGHT}px` }}>
         {/* Time labels and grid lines */}
         {timeLabels.map(({ hour, label }) => {
-          const top = (hour - START_HOUR) * HOUR_HEIGHT;
+          const top = (hour - startHour) * HOUR_HEIGHT;
           return (
             <div key={label}>
               <div
@@ -301,7 +314,7 @@ function CalendarView({ date, appointments, staff, onCancel, actionLoading }: { 
           {appointments.map((apt) => {
             const start = parseISO(apt.scheduled_start);
             const end = parseISO(apt.scheduled_end);
-            const startMinutes = (start.getHours() - START_HOUR) * 60 + start.getMinutes();
+            const startMinutes = (start.getHours() - startHour) * 60 + start.getMinutes();
             const durationMinutes = differenceInMinutes(end, start);
             const top = (startMinutes / 60) * HOUR_HEIGHT;
             const height = Math.max((durationMinutes / 60) * HOUR_HEIGHT, 24);
