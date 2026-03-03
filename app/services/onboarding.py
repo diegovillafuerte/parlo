@@ -1358,8 +1358,6 @@ class OnboardingHandler(ToolCallingMixin):
         if collected.get("twilio_provisioned_number") and number_status == "provisioned":
             # Twilio provisioned number path
             provisioned_number = normalize_phone_number(collected["twilio_provisioned_number"])
-            org.phone_number = provisioned_number
-            org.phone_country_code = self._extract_country_code(provisioned_number)
             org.whatsapp_phone_number_id = provisioned_number
             org_settings["whatsapp_provider"] = "twilio"
             org_settings["twilio_phone_number"] = provisioned_number
