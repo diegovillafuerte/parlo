@@ -1315,6 +1315,33 @@ class ToolHandler:
         finally:
             await whatsapp.close()
 
+    async def _notify_customer(self, customer_id: UUID, message: str) -> bool:
+        """Send a WhatsApp notification to a customer. Never raises."""
+        from app.services.whatsapp import WhatsAppClient, resolve_whatsapp_sender
+
+        customer = await self.db.get(Customer, customer_id)
+        if not customer or not customer.phone_number:
+            return False
+        if customer.phone_number.startswith("walk_in_"):
+            return False
+
+        whatsapp = WhatsAppClient(mock_mode=self.mock_mode)
+        try:
+            from_number = resolve_whatsapp_sender(self.org) or self.org.whatsapp_phone_number_id
+            await whatsapp.send_text_message(
+                phone_number_id=self.org.whatsapp_phone_number_id or "",
+                to=customer.phone_number,
+                message=message,
+                from_number=from_number,
+            )
+            logger.info(f"Customer notification sent to {customer.phone_number}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to notify customer {customer.phone_number}: {e}")
+            return False
+        finally:
+            await whatsapp.close()
+
     # -------------------------------------------------------------------------
     # Staff Tool Implementations
     # -------------------------------------------------------------------------
@@ -1788,9 +1815,24 @@ class ToolHandler:
             "message": "Cita cancelada ✓",
         }
 
-        if notify_customer:
-            # TODO: Send notification to customer via WhatsApp
-            result["notification"] = "Se notificará al cliente"
+        if notify_customer and appointment.end_customer_id:
+            service = await self.db.get(ServiceType, appointment.service_type_id)
+            local_start = self._to_local(appointment.scheduled_start)
+            service_name = service.name if service else "tu servicio"
+            date_str = local_start.strftime("%d de %B")
+            time_str = local_start.strftime("%I:%M %p")
+
+            message = (
+                f"\u274c Tu cita de {service_name} el {date_str} a las {time_str} fue cancelada."
+            )
+            if reason and reason != "Cancelada por el negocio":
+                message += f"\nRaz\u00f3n: {reason}"
+            message += "\nSi tienes dudas, escr\u00edbenos aqu\u00ed."
+
+            sent = await self._notify_customer(appointment.end_customer_id, message)
+            result["notification"] = (
+                "Cliente notificado \u2713" if sent else "No se pudo notificar al cliente"
+            )
 
         return result
 
@@ -2031,8 +2073,23 @@ class ToolHandler:
             "service": service.name,
         }
 
-        if notify_customer:
-            result["notification"] = "Se notificará al cliente"
+        if notify_customer and appointment.end_customer_id:
+            old_date_str = old_start.strftime("%d de %B")
+            old_time_str = old_start.strftime("%I:%M %p")
+            new_date_str = local_new.strftime("%d de %B")
+            new_time_str = local_new.strftime("%I:%M %p")
+
+            message = (
+                f"\U0001f4c5 Tu cita de {service.name} fue reagendada:\n"
+                f"Antes: {old_date_str} a las {old_time_str}\n"
+                f"Ahora: {new_date_str} a las {new_time_str}\n"
+                f"Si tienes dudas, escr\u00edbenos aqu\u00ed."
+            )
+
+            sent = await self._notify_customer(appointment.end_customer_id, message)
+            result["notification"] = (
+                "Cliente notificado \u2713" if sent else "No se pudo notificar al cliente"
+            )
 
         return result
 
