@@ -16,6 +16,7 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services import auth as auth_service
+from app.services.whatsapp import WhatsAppClient
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,17 @@ async def request_magic_link(
         print(f"{magic_link_url}")
         print(f"{'=' * 60}\n")
     else:
-        # TODO: Send via WhatsApp API
-        # await whatsapp_service.send_magic_link(organization, magic_link_url)
-        logger.info(f"Magic link created for organization {organization.id}")
+        whatsapp = WhatsAppClient(mock_mode=not settings.twilio_account_sid)
+        try:
+            await whatsapp.send_magic_link(
+                to=organization.phone_number,
+                magic_link_url=magic_link_url,
+            )
+            logger.info(f"Magic link sent to org {organization.id}")
+        except Exception as e:
+            logger.error(f"Failed to send magic link to org {organization.id}: {e}")
+        finally:
+            await whatsapp.close()
 
     return MagicLinkResponse()
 

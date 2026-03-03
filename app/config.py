@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     twilio_validate_signature: bool = True
     twilio_address_sid: str = ""  # Address SID required for purchasing MX numbers
     twilio_bundle_sid: str = ""  # Regulatory Bundle SID required for MX mobile numbers
+    twilio_magic_link_content_sid: str = ""  # Content Template SID for magic link messages
 
     # OpenAI
     openai_api_key: str = ""

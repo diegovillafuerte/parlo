@@ -179,6 +179,97 @@ class WhatsAppClient:
                 logger.error(f"   Response: {e.response.text}")
             raise
 
+    async def send_magic_link(
+        self,
+        to: str,
+        magic_link_url: str,
+        from_number: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a magic link via WhatsApp using Content Template.
+
+        Uses an approved Content Template when configured (works outside 24h window).
+        Falls back to free-form text if no template SID is set.
+        """
+        sender = from_number or self.from_number
+        content_sid = settings.twilio_magic_link_content_sid
+
+        if content_sid:
+            return await self._send_content_template(
+                to=to,
+                content_sid=content_sid,
+                content_variables={"1": magic_link_url},
+                from_number=sender,
+            )
+        else:
+            message = (
+                f"Tu link de acceso a Parlo:\n\n"
+                f"{magic_link_url}\n\n"
+                f"Este link expira en 15 minutos. "
+                f"Si no solicitaste este acceso, ignora este mensaje."
+            )
+            return await self.send_text_message(
+                phone_number_id=sender or "",
+                to=to,
+                message=message,
+                from_number=sender,
+            )
+
+    async def _send_content_template(
+        self,
+        to: str,
+        content_sid: str,
+        content_variables: dict[str, str],
+        from_number: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a message using a Twilio Content Template."""
+        import json
+
+        if self.mock_mode:
+            from_display = from_number or self.from_number
+            logger.info(
+                f"[MOCK] Sending content template:\n"
+                f"  From: {from_display}\n"
+                f"  To: {to}\n"
+                f"  ContentSid: {content_sid}\n"
+                f"  Variables: {content_variables}"
+            )
+            return {
+                "sid": f"mock_content_{uuid.uuid4().hex}",
+                "status": "queued",
+                "to": to,
+                "from": from_display,
+            }
+
+        url = f"{self.base_url}/Accounts/{self.account_sid}/Messages.json"
+        to_formatted = self._format_whatsapp_number(to)
+        from_candidate = from_number or self.from_number
+        if not from_candidate:
+            raise ValueError("Missing WhatsApp sender number")
+        from_formatted = self._format_whatsapp_number(from_candidate)
+
+        data = {
+            "From": from_formatted,
+            "To": to_formatted,
+            "ContentSid": content_sid,
+            "ContentVariables": json.dumps(content_variables),
+        }
+
+        try:
+            response = await self.client.post(
+                url,
+                data=data,
+                auth=(self.account_sid, self.auth_token),
+            )
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Sent content template {content_sid} to {to} (SID: {result.get('sid')})")
+            return result
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to send content template to {to}: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                logger.error(f"   Response: {e.response.text}")
+            raise
+
     async def send_template_message(
         self,
         phone_number_id: str,
