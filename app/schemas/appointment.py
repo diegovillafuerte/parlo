@@ -92,6 +92,8 @@ class AppointmentResponse(AppointmentBase):
     source: str
     cancellation_reason: str | None
     reminder_sent_at: datetime | None
+    customer_name: str | None = None
+    service_type_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

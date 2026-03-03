@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { format, addDays, subDays, startOfDay, parseISO } from 'date-fns';
+import { format, addDays, subDays, startOfDay, parseISO, differenceInMinutes } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/providers/AuthProvider';
@@ -18,6 +18,11 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   cancelled: { label: 'Cancelada', className: 'bg-gray-100 text-gray-600' },
   no_show: { label: 'No asistió', className: 'bg-red-100 text-red-800' },
 };
+
+const HOUR_HEIGHT = 60; // px per hour
+const START_HOUR = 8;
+const END_HOUR = 20;
+const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 export default function SchedulePage() {
   const { organization } = useAuth();
@@ -112,6 +117,14 @@ export default function SchedulePage() {
     }
   };
 
+  // Split into active vs recent changes
+  const activeAppointments = appointments.filter(
+    (apt) => apt.status === 'pending' || apt.status === 'confirmed'
+  );
+  const recentChanges = appointments.filter(
+    (apt) => apt.status === 'cancelled' || apt.status === 'completed' || apt.status === 'no_show'
+  );
+
   return (
     <DashboardLayout>
       <div className="space-y-4">
@@ -193,6 +206,24 @@ export default function SchedulePage() {
           </button>
         </div>
 
+        {/* Recent Changes Log */}
+        {!isLoading && recentChanges.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h3 className="text-sm font-medium text-gray-500 mb-2">Cambios recientes</h3>
+            <div className="space-y-1">
+              {recentChanges.map((apt) => (
+                <div key={apt.id} className="flex items-center gap-2 text-sm">
+                  <StatusBadge status={apt.status} />
+                  <span className="text-gray-700">{apt.customer_name || 'Cliente'}</span>
+                  <span className="text-gray-400">
+                    {format(parseISO(apt.scheduled_start), 'h:mm a')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         {isLoading ? (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
@@ -202,16 +233,14 @@ export default function SchedulePage() {
         ) : viewMode === 'calendar' ? (
           <CalendarView
             date={selectedDate}
-            appointments={appointments}
+            appointments={activeAppointments}
             staff={staff}
             onCancel={handleCancel}
-            onComplete={handleComplete}
-            onNoShow={handleNoShow}
             actionLoading={actionLoading}
           />
         ) : (
           <ListView
-            appointments={appointments}
+            appointments={activeAppointments}
             staff={staff}
             onCancel={handleCancel}
             onComplete={handleComplete}
@@ -234,62 +263,71 @@ interface ViewProps {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CalendarView({ date, appointments, staff, onCancel, onComplete, onNoShow, actionLoading }: ViewProps & { date: Date }) {
-  // Generate time slots from 8 AM to 8 PM
-  const timeSlots = Array.from({ length: 13 }, (_, i) => {
-    const hour = 8 + i;
+function CalendarView({ date, appointments, staff, onCancel, actionLoading }: { date: Date; appointments: Appointment[]; staff: Staff[]; onCancel: (id: string) => void; actionLoading: string | null }) {
+  const timeLabels = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => {
+    const hour = START_HOUR + i;
     return { hour, label: `${hour.toString().padStart(2, '0')}:00` };
   });
-
-  const getAppointmentsForSlot = (hour: number) => {
-    return appointments.filter((apt) => {
-      const aptHour = parseISO(apt.scheduled_start).getHours();
-      return aptHour === hour;
-    });
-  };
 
   const getStaffName = (staffId: string | null) => {
     if (!staffId) return 'Sin asignar';
     return staff.find((s) => s.id === staffId)?.name || 'Desconocido';
   };
 
-  const hasAnyAppointments = appointments.length > 0;
-
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div className="divide-y divide-gray-100">
-        {timeSlots.map(({ hour, label }) => {
-          const slotAppointments = getAppointmentsForSlot(hour);
+      <div className="relative" style={{ height: `${TOTAL_HOURS * HOUR_HEIGHT}px` }}>
+        {/* Time labels and grid lines */}
+        {timeLabels.map(({ hour, label }) => {
+          const top = (hour - START_HOUR) * HOUR_HEIGHT;
           return (
-            <div key={label} className="flex">
-              <div className="w-16 py-4 px-3 text-sm text-gray-500 font-medium border-r border-gray-100">
+            <div key={label}>
+              <div
+                className="absolute left-0 w-16 text-sm text-gray-500 font-medium px-3 -translate-y-1/2"
+                style={{ top: `${top}px` }}
+              >
                 {label}
               </div>
-              <div className="flex-1 py-2 px-4 min-h-[60px]">
-                {slotAppointments.length > 0 ? (
-                  <div className="space-y-2">
-                    {slotAppointments.map((apt) => (
-                      <AppointmentCard
-                        key={apt.id}
-                        appointment={apt}
-                        staffName={getStaffName(apt.staff_id)}
-                        onCancel={onCancel}
-                        onComplete={onComplete}
-                        onNoShow={onNoShow}
-                        actionLoading={actionLoading}
-                        compact
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <div
+                className="absolute left-16 right-0 border-t border-gray-100"
+                style={{ top: `${top}px` }}
+              />
             </div>
           );
         })}
+
+        {/* Appointment cards */}
+        <div className="absolute left-16 right-0 top-0 bottom-0">
+          {appointments.map((apt) => {
+            const start = parseISO(apt.scheduled_start);
+            const end = parseISO(apt.scheduled_end);
+            const startMinutes = (start.getHours() - START_HOUR) * 60 + start.getMinutes();
+            const durationMinutes = differenceInMinutes(end, start);
+            const top = (startMinutes / 60) * HOUR_HEIGHT;
+            const height = Math.max((durationMinutes / 60) * HOUR_HEIGHT, 24);
+            const isShort = durationMinutes <= 30;
+
+            return (
+              <div
+                key={apt.id}
+                className="absolute left-2 right-2"
+                style={{ top: `${top}px`, height: `${height}px` }}
+              >
+                <AppointmentCard
+                  appointment={apt}
+                  staffName={getStaffName(apt.staff_id)}
+                  onCancel={onCancel}
+                  actionLoading={actionLoading}
+                  isShort={isShort}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Empty State */}
-      {!hasAnyAppointments && (
+      {appointments.length === 0 && (
         <div className="p-8 text-center text-gray-500 border-t">
           <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -334,11 +372,11 @@ function ListView({ appointments, staff, onCancel, onComplete, onNoShow, actionL
               </div>
               <div className="text-sm text-gray-600">
                 <span className="sm:hidden font-medium text-gray-500">Cliente: </span>
-                {apt.notes || 'Cliente'}
+                {apt.customer_name || 'Cliente'}
               </div>
               <div className="text-sm text-gray-600">
                 <span className="sm:hidden font-medium text-gray-500">Servicio: </span>
-                Servicio
+                {apt.service_type_name || 'Servicio'}
               </div>
               <div className="text-sm text-gray-600">
                 <span className="sm:hidden font-medium text-gray-500">Empleado: </span>
@@ -376,28 +414,46 @@ function AppointmentCard({
   appointment,
   staffName,
   onCancel,
-  onComplete,
-  onNoShow,
   actionLoading,
-  compact = false,
+  isShort = false,
 }: {
   appointment: Appointment;
   staffName: string;
   onCancel: (id: string) => void;
-  onComplete: (id: string) => void;
-  onNoShow: (id: string) => void;
   actionLoading: string | null;
-  compact?: boolean;
+  isShort?: boolean;
 }) {
   const startTime = format(parseISO(appointment.scheduled_start), 'h:mm a');
   const endTime = format(parseISO(appointment.scheduled_end), 'h:mm a');
+  const isLoading = actionLoading === appointment.id;
+  const canAct = ['pending', 'confirmed'].includes(appointment.status);
+
+  if (isShort) {
+    return (
+      <div className="h-full bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 flex items-center justify-between gap-2 overflow-hidden text-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-medium text-gray-900 truncate">{appointment.customer_name || 'Cliente'}</span>
+          <span className="text-gray-500 whitespace-nowrap">{startTime}</span>
+        </div>
+        {canAct && (
+          <button
+            onClick={() => onCancel(appointment.id)}
+            disabled={isLoading}
+            className="text-xs text-red-600 hover:bg-red-50 px-2 py-0.5 rounded-full border border-red-200 whitespace-nowrap disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className={`bg-blue-50 border border-blue-200 rounded-lg p-3 ${compact ? 'text-sm' : ''}`}>
+    <div className="h-full bg-blue-50 border border-blue-200 rounded-lg p-3 overflow-hidden text-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-gray-900 truncate">
-            {appointment.notes || 'Cliente'}
+            {appointment.customer_name || 'Cliente'}
           </div>
           <div className="text-gray-600">
             {startTime} - {endTime}
@@ -408,14 +464,15 @@ function AppointmentCard({
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusBadge status={appointment.status} />
-          <AppointmentActions
-            appointment={appointment}
-            onCancel={onCancel}
-            onComplete={onComplete}
-            onNoShow={onNoShow}
-            actionLoading={actionLoading}
-            compact
-          />
+          {canAct && (
+            <button
+              onClick={() => onCancel(appointment.id)}
+              disabled={isLoading}
+              className="text-xs text-red-600 hover:bg-red-50 px-2 py-0.5 rounded-full border border-red-200 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -437,49 +494,40 @@ function AppointmentActions({
   onComplete,
   onNoShow,
   actionLoading,
-  compact = false,
 }: {
   appointment: Appointment;
   onCancel: (id: string) => void;
   onComplete: (id: string) => void;
   onNoShow: (id: string) => void;
   actionLoading: string | null;
-  compact?: boolean;
 }) {
   const isLoading = actionLoading === appointment.id;
   const canAct = ['pending', 'confirmed'].includes(appointment.status);
 
   if (!canAct) return null;
 
-  const buttonClass = compact
-    ? 'p-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50'
-    : 'px-2 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50';
-
   return (
     <div className="flex gap-1">
       <button
         onClick={() => onComplete(appointment.id)}
         disabled={isLoading}
-        className={`${buttonClass} text-green-600`}
-        title="Completar"
+        className="px-2 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 text-green-600"
       >
-        {compact ? '✓' : 'Completar'}
+        Completar
       </button>
       <button
         onClick={() => onNoShow(appointment.id)}
         disabled={isLoading}
-        className={`${buttonClass} text-orange-600`}
-        title="No asistió"
+        className="px-2 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 text-orange-600"
       >
-        {compact ? '✗' : 'No asistió'}
+        No asistió
       </button>
       <button
         onClick={() => onCancel(appointment.id)}
         disabled={isLoading}
-        className={`${buttonClass} text-red-600`}
-        title="Cancelar"
+        className="px-2 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-50 text-red-600"
       >
-        {compact ? '−' : 'Cancelar'}
+        Cancelar
       </button>
     </div>
   );

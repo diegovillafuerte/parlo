@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import (
     Appointment,
@@ -26,7 +27,9 @@ async def get_appointment(
 ) -> Appointment | None:
     """Get appointment by ID, scoped to organization."""
     result = await db.execute(
-        select(Appointment).where(
+        select(Appointment)
+        .options(selectinload(Appointment.end_customer), selectinload(Appointment.service_type))
+        .where(
             Appointment.id == appointment_id,
             Appointment.organization_id == organization_id,
         )
@@ -43,7 +46,9 @@ async def list_appointments(
     staff_id: UUID | None = None,
 ) -> list[Appointment]:
     """List appointments with optional filters."""
-    query = select(Appointment).where(Appointment.organization_id == organization_id)
+    query = select(Appointment).options(
+        selectinload(Appointment.end_customer), selectinload(Appointment.service_type)
+    ).where(Appointment.organization_id == organization_id)
 
     if start_date:
         start_dt = datetime.combine(start_date, time.min, tzinfo=UTC)

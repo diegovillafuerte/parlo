@@ -103,6 +103,20 @@ class Appointment(Base, UUIDMixin, TimestampMixin):
     service_type: Mapped["ServiceType"] = relationship("ServiceType", back_populates="appointments")
     spot: Mapped["Spot | None"] = relationship("Spot", back_populates="appointments")
 
+    @property
+    def customer_name(self) -> str | None:
+        """Return end customer name if relationship is loaded."""
+        if self.end_customer:
+            return self.end_customer.name
+        return None
+
+    @property
+    def service_type_name(self) -> str | None:
+        """Return service type name if relationship is loaded."""
+        if self.service_type:
+            return self.service_type.name
+        return None
+
     def __repr__(self) -> str:
         """String representation."""
         return f"<Appointment(id={self.id}, status='{self.status}', scheduled_start={self.scheduled_start})>"

@@ -102,6 +102,8 @@ export interface Appointment {
   notes: string | null;
   cancellation_reason: string | null;
   reminder_sent_at: string | null;
+  customer_name: string | null;
+  service_type_name: string | null;
   created_at: string;
   updated_at: string;
 }
