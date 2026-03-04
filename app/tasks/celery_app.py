@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.tasks.health",
         "app.tasks.reminders",
         "app.tasks.cleanup",
+        "app.tasks.insights",
     ],
 )
 
@@ -59,6 +60,10 @@ celery_app.conf.update(
             "task": "app.tasks.cleanup.check_handoff_timeouts",
             "schedule": 300.0,  # Every 5 minutes
             "args": [30],  # 30-minute timeout
+        },
+        "sweep-unanalyzed-conversations": {
+            "task": "app.tasks.insights.sweep_unanalyzed_conversations",
+            "schedule": 1800.0,  # Every 30 minutes
         },
     },
 )

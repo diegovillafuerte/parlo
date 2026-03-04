@@ -363,6 +363,31 @@ export interface UserActivityListResponse {
   has_more: boolean;
 }
 
+// Insight types
+export interface InsightSummary {
+  id: string;
+  organization_id: string;
+  organization_name: string | null;
+  conversation_id: string;
+  insight_type: 'bug' | 'feature_request' | 'follow_up';
+  title: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  quality_score: number;
+  conversation_summary: string;
+  status: 'open' | 'acknowledged' | 'resolved';
+  created_at: string;
+}
+
+export interface InsightStats {
+  total: number;
+  open: number;
+  acknowledged: number;
+  resolved: number;
+  by_type: Record<string, number>;
+  avg_quality_score: number | null;
+}
+
 // Pending Numbers types
 export interface PendingNumberOrg {
   id: string;

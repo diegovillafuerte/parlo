@@ -50,6 +50,9 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     )  # AI conversation state
 
     last_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     # Relationships
     organization: Mapped["Organization"] = relationship(

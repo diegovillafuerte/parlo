@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.models import (
     Appointment,
     Conversation,
+    ConversationInsight,
     Customer,
     FunctionTrace,
     Location,
@@ -806,3 +807,124 @@ async def assign_whatsapp_number(
     await db.refresh(org)
 
     return org
+
+
+# =============================================================================
+# Insights
+# =============================================================================
+
+
+async def list_insights(
+    db: AsyncSession,
+    insight_type: str | None = None,
+    status: str | None = None,
+    severity: str | None = None,
+    organization_id: UUID | None = None,
+    skip: int = 0,
+    limit: int = 50,
+) -> list[dict]:
+    """List conversation insights with optional filters."""
+    query = (
+        select(ConversationInsight, Organization.name.label("org_name"))
+        .join(Organization, ConversationInsight.organization_id == Organization.id)
+        .order_by(ConversationInsight.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+
+    if insight_type:
+        query = query.where(ConversationInsight.insight_type == insight_type)
+    if status:
+        query = query.where(ConversationInsight.status == status)
+    if severity:
+        query = query.where(ConversationInsight.severity == severity)
+    if organization_id:
+        query = query.where(ConversationInsight.organization_id == organization_id)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        {
+            "id": row.ConversationInsight.id,
+            "organization_id": row.ConversationInsight.organization_id,
+            "organization_name": row.org_name,
+            "conversation_id": row.ConversationInsight.conversation_id,
+            "insight_type": row.ConversationInsight.insight_type,
+            "title": row.ConversationInsight.title,
+            "description": row.ConversationInsight.description,
+            "severity": row.ConversationInsight.severity,
+            "quality_score": row.ConversationInsight.quality_score,
+            "conversation_summary": row.ConversationInsight.conversation_summary,
+            "status": row.ConversationInsight.status,
+            "created_at": row.ConversationInsight.created_at,
+        }
+        for row in rows
+    ]
+
+
+async def update_insight_status(
+    db: AsyncSession,
+    insight_id: UUID,
+    new_status: str,
+) -> dict | None:
+    """Update insight status."""
+    result = await db.execute(
+        select(ConversationInsight, Organization.name.label("org_name"))
+        .join(Organization, ConversationInsight.organization_id == Organization.id)
+        .where(ConversationInsight.id == insight_id)
+    )
+    row = result.first()
+    if not row:
+        return None
+
+    insight = row.ConversationInsight
+    insight.status = new_status
+    await db.flush()
+
+    return {
+        "id": insight.id,
+        "organization_id": insight.organization_id,
+        "organization_name": row.org_name,
+        "conversation_id": insight.conversation_id,
+        "insight_type": insight.insight_type,
+        "title": insight.title,
+        "description": insight.description,
+        "severity": insight.severity,
+        "quality_score": insight.quality_score,
+        "conversation_summary": insight.conversation_summary,
+        "status": insight.status,
+        "created_at": insight.created_at,
+    }
+
+
+async def get_insight_stats(db: AsyncSession) -> dict:
+    """Get insight statistics summary."""
+    # Status counts
+    status_counts = await db.execute(
+        select(ConversationInsight.status, func.count()).group_by(ConversationInsight.status)
+    )
+    status_map = dict(status_counts.all())
+
+    # Type counts
+    type_counts = await db.execute(
+        select(ConversationInsight.insight_type, func.count()).group_by(
+            ConversationInsight.insight_type
+        )
+    )
+    type_map = dict(type_counts.all())
+
+    # Avg quality score
+    avg_result = await db.execute(select(func.avg(ConversationInsight.quality_score)))
+    avg_quality = avg_result.scalar()
+
+    total = sum(status_map.values())
+
+    return {
+        "total": total,
+        "open": status_map.get("open", 0),
+        "acknowledged": status_map.get("acknowledged", 0),
+        "resolved": status_map.get("resolved", 0),
+        "by_type": type_map,
+        "avg_quality_score": round(float(avg_quality), 1) if avg_quality else None,
+    }

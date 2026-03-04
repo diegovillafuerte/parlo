@@ -9,6 +9,7 @@ const tabs = [
   { name: 'Organizations', href: '/admin/organizations' },
   { name: 'Pending Numbers', href: '/admin/pending-numbers' },
   { name: 'Conversations', href: '/admin/conversations' },
+  { name: 'Insights', href: '/admin/insights' },
   { name: 'Logs', href: '/admin/logs' },
   { name: 'Simulate', href: '/admin/simulate' },
 ];

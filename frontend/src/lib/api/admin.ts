@@ -11,6 +11,8 @@ import type {
   PendingNumberOrg,
   AssignNumberRequest,
   AssignNumberResponse,
+  InsightSummary,
+  InsightStats,
 } from '@/lib/types';
 
 export async function adminLogin(password: string): Promise<AdminLoginResponse> {
@@ -87,6 +89,35 @@ export async function getActivityFeed(limit?: number): Promise<AdminActivityItem
 
 export async function deleteOrganization(orgId: string): Promise<void> {
   await api.delete(`/admin/organizations/${orgId}`);
+}
+
+// Insights
+export async function listInsights(params?: {
+  insight_type?: string;
+  status?: string;
+  severity?: string;
+  organization_id?: string;
+  skip?: number;
+  limit?: number;
+}): Promise<InsightSummary[]> {
+  const response = await api.get<InsightSummary[]>('/admin/insights', { params });
+  return response.data;
+}
+
+export async function updateInsightStatus(
+  insightId: string,
+  status: 'open' | 'acknowledged' | 'resolved'
+): Promise<InsightSummary> {
+  const response = await api.patch<InsightSummary>(
+    `/admin/insights/${insightId}/status`,
+    { status }
+  );
+  return response.data;
+}
+
+export async function getInsightStats(): Promise<InsightStats> {
+  const response = await api.get<InsightStats>('/admin/insights/stats');
+  return response.data;
 }
 
 // Pending Numbers

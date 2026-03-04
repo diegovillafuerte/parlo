@@ -691,6 +691,18 @@ class CustomerFlowHandler:
                     collected["interrupted_by_handoff"] = True
                     flow_session.collected_data = collected
 
+        # Queue conversation analysis when flow reaches terminal state
+        if flow_session and not flow_session.is_active and flow_session.is_terminal_state:
+            try:
+                from app.tasks.insights import analyze_conversation
+
+                analyze_conversation.delay(str(conversation.id))
+            except Exception:
+                logger.warning(
+                    f"Failed to queue conversation analysis for {conversation.id}",
+                    exc_info=True,
+                )
+
         if flow_session:
             await self.db.flush()
 

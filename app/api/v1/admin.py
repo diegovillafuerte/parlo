@@ -27,6 +27,7 @@ from app.schemas.admin import (
     AssignNumberResponse,
     PendingNumberOrg,
 )
+from app.schemas.insights import InsightStatsResponse, InsightStatusUpdate, InsightSummary
 from app.schemas.logs import (
     CorrelationDetail,
     CorrelationListResponse,
@@ -370,6 +371,78 @@ async def get_activity_feed(
     """Get recent activity feed."""
     activities = await admin_service.get_activity_feed(db, limit)
     return [AdminActivityItem(**a) for a in activities]
+
+
+# =============================================================================
+# Insights Endpoints - Conversation analysis
+# =============================================================================
+
+
+# Literal path /insights/stats must come before /insights/{id} routes
+@router.get(
+    "/insights/stats",
+    response_model=InsightStatsResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def get_insight_stats(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> InsightStatsResponse:
+    """Get insight statistics summary."""
+    stats = await admin_service.get_insight_stats(db)
+    return InsightStatsResponse(**stats)
+
+
+@router.get(
+    "/insights",
+    response_model=list[InsightSummary],
+    dependencies=[Depends(require_admin)],
+)
+async def list_insights(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    insight_type: Annotated[str | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+    severity: Annotated[str | None, Query()] = None,
+    organization_id: Annotated[UUID | None, Query()] = None,
+    skip: int = 0,
+    limit: int = 50,
+) -> list[InsightSummary]:
+    """List conversation insights with optional filters."""
+    insights = await admin_service.list_insights(
+        db,
+        insight_type=insight_type,
+        status=status,
+        severity=severity,
+        organization_id=organization_id,
+        skip=skip,
+        limit=limit,
+    )
+    return [InsightSummary(**i) for i in insights]
+
+
+@router.patch(
+    "/insights/{insight_id}/status",
+    response_model=InsightSummary,
+    dependencies=[Depends(require_admin)],
+)
+async def update_insight_status(
+    insight_id: UUID,
+    status_update: InsightStatusUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> InsightSummary:
+    """Update insight status (acknowledge/resolve)."""
+    valid_statuses = {"open", "acknowledged", "resolved"}
+    if status_update.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status must be one of: {', '.join(valid_statuses)}",
+        )
+
+    result = await admin_service.update_insight_status(db, insight_id, status_update.status)
+    if not result:
+        raise HTTPException(status_code=404, detail="Insight not found")
+
+    await db.commit()
+    return InsightSummary(**result)
 
 
 # =============================================================================

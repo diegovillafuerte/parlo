@@ -6,6 +6,12 @@ from app.models.auth_token import AuthToken, TokenType
 from app.models.availability import Availability, AvailabilityType
 from app.models.base import Base, TimestampMixin, UUIDMixin
 from app.models.conversation import Conversation, ConversationStatus
+from app.models.conversation_insight import (
+    ConversationInsight,
+    InsightSeverity,
+    InsightStatus,
+    InsightType,
+)
 from app.models.customer_flow_session import (
     CustomerFlowSession,
     CustomerFlowState,
@@ -61,6 +67,10 @@ __all__ = [
     "ParloUserPermissionLevel",
     "AppointmentStatus",
     "AppointmentSource",
+    "ConversationInsight",
+    "InsightType",
+    "InsightSeverity",
+    "InsightStatus",
     "ConversationStatus",
     "MessageDirection",
     "MessageSenderType",
