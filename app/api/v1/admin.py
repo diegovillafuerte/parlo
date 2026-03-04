@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.admin_deps import require_admin
 from app.api.deps import get_db
 from app.config import get_settings
+from app.models import Organization, OrganizationStatus
 from app.schemas.admin import (
     AdminActivityItem,
     AdminConversationDetail,
@@ -38,6 +39,7 @@ from app.schemas.logs import (
 )
 from app.services import admin as admin_service
 from app.utils.jwt import create_admin_access_token
+from app.utils.slug import generate_unique_slug
 
 logger = logging.getLogger(__name__)
 
@@ -673,3 +675,33 @@ async def fix_sender_webhooks(
         await service.close()
 
     return {"results": results, "callback_url": callback_url}
+
+
+@router.post(
+    "/backfill-slugs",
+    dependencies=[Depends(require_admin)],
+)
+async def backfill_slugs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Backfill slugs for active organizations that don't have one."""
+    result = await db.execute(
+        select(Organization).where(
+            Organization.status == OrganizationStatus.ACTIVE.value,
+            Organization.slug.is_(None),
+        )
+    )
+    orgs = result.scalars().all()
+
+    if not orgs:
+        return {"message": "No organizations need backfill", "count": 0}
+
+    results = []
+    for org in orgs:
+        name = org.name or "negocio"
+        slug = await generate_unique_slug(db, name)
+        org.slug = slug
+        results.append({"name": org.name, "slug": slug})
+
+    await db.commit()
+    return {"message": f"Backfilled {len(results)} organizations", "results": results}
