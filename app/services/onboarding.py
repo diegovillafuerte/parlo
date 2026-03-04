@@ -164,6 +164,20 @@ ONBOARDING_TOOLS = [
         },
     },
     {
+        "name": "remove_service",
+        "description": "Elimina un servicio del menú. Úsalo cuando el usuario quiera quitar un servicio que se agregó por error.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "service_name": {
+                    "type": "string",
+                    "description": "Nombre del servicio a eliminar",
+                },
+            },
+            "required": ["service_name"],
+        },
+    },
+    {
         "name": "get_current_menu",
         "description": "Obtiene el menú de servicios actual para mostrarlo al usuario. Úsalo cuando necesites mostrar el menú completo.",
         "input_schema": {
@@ -282,6 +296,24 @@ ONBOARDING_TOOLS = [
         },
     },
     {
+        "name": "set_website_preference",
+        "description": "Configura la preferencia de página web del negocio. El negocio puede tener una página web automática en [nombre].parlo.mx. Llama esta herramienta después de preguntar al usuario si quiere página web.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "wants_website": {
+                    "type": "boolean",
+                    "description": "True si el usuario quiere una página web, False si no",
+                },
+                "custom_slug": {
+                    "type": "string",
+                    "description": "Slug personalizado si el usuario quiere una dirección diferente a la sugerida. Solo letras minúsculas, números y guiones. Ejemplo: 'mi-barberia'",
+                },
+            },
+            "required": ["wants_website"],
+        },
+    },
+    {
         "name": "provision_twilio_number",
         "description": "Provisiona un nuevo número de WhatsApp dedicado para el negocio usando Twilio. Úsalo cuando el usuario NO tiene una cuenta de WhatsApp Business existente y quiere que Parlo le proporcione un número dedicado.",
         "input_schema": {
@@ -350,6 +382,10 @@ def build_onboarding_system_prompt(org: Organization) -> str:
         progress_parts.append(f"• Empleados adicionales: {len(staff_members)}")
         for st in staff_members:
             progress_parts.append(f"  - {st['name']} ({st.get('phone_number', 'sin tel')})")
+    if collected.get("wants_website") is True:
+        progress_parts.append(f"• Página web: {collected.get('website_slug', '?')}.parlo.mx")
+    elif collected.get("wants_website") is False:
+        progress_parts.append("• Página web: No quiere")
 
     progress = (
         "\n".join(progress_parts) if progress_parts else "Ninguna información recolectada aún."
@@ -421,7 +457,16 @@ En unos minutos configuramos tu cuenta. Te voy a hacer unas preguntas sobre tu n
 - Pregunta si todos hacen todos los servicios o hay especialidades
 - El dueño ya se registra automáticamente con su número actual
 
-### Paso 5: Confirmación y Activación
+### Paso 5: Página Web
+- Ofrece al usuario una página web automática para su negocio
+- Sugiere la dirección basada en el nombre del negocio (ej: "barberia-don-carlos.parlo.mx")
+- Ejemplo: "También puedo crear una página web para tu negocio en barberia-don-carlos.parlo.mx donde tus clientes vean tus servicios, precios y horarios. ¿Te gustaría tenerla?"
+- Si dicen sí con la dirección sugerida → usa `set_website_preference(wants_website=true)`
+- Si quieren otra dirección → pregunta cuál, luego `set_website_preference(wants_website=true, custom_slug="...")`
+- Si no quieren → `set_website_preference(wants_website=false)`
+- IMPORTANTE: El slug debe ser solo letras minúsculas, números y guiones
+
+### Paso 6: Confirmación y Activación
 - Muestra un resumen de todo lo configurado
 - Pregunta "¿Todo correcto? ¿Activamos tu cuenta?"
 - Si confirman, usa `complete_onboarding` para crear la cuenta (esto también asigna automáticamente un número de WhatsApp)
@@ -464,6 +509,7 @@ En unos minutos configuramos tu cuenta. Te voy a hacer unas preguntas sobre tu n
   - Barba: $80-150 (20-30 min)
   - Peinado: $200-400 (45-60 min)
 - SIEMPRE muestra el menú actualizado después de agregar servicios
+- El nombre del dueño que aparece arriba viene del perfil de WhatsApp y puede ser incorrecto. SIEMPRE pregunta al usuario por el nombre de su negocio — NUNCA uses el nombre del dueño como nombre del negocio ni como nombre de servicio.
 - NO inventes información. Solo guarda lo que el usuario te diga
 - Si el usuario quiere corregir algo, permítelo amablemente
 
@@ -633,7 +679,7 @@ class OnboardingHandler(ToolCallingMixin):
             messages=history,
             tools=ONBOARDING_TOOLS,
             tool_executor=execute_tool,
-            initial_tool_choice="required",
+            initial_tool_choice="auto",
         )
 
         # Store AI response (atomic INSERT)
@@ -876,6 +922,51 @@ class OnboardingHandler(ToolCallingMixin):
                 "menu_display": _format_service_menu(services),
             }
 
+        elif tool_name == "remove_service":
+            services = collected.get("services", [])
+            target_name = (tool_input.get("service_name") or "").strip().lower()
+            original_count = len(services)
+            services = [s for s in services if s["name"].strip().lower() != target_name]
+
+            if len(services) == original_count:
+                return {
+                    "success": False,
+                    "error": f"No se encontró el servicio '{tool_input.get('service_name')}'",
+                    "current_menu": [
+                        {
+                            "name": s["name"],
+                            "price": f"${s['price']:.0f}",
+                            "duration": f"{s['duration_minutes']} min",
+                        }
+                        for s in services
+                    ],
+                    "menu_display": _format_service_menu(services),
+                }
+
+            collected["services"] = services
+            org.onboarding_data = collected
+            await self.db.flush()
+
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                f"   ✅ remove_service: removed '{tool_input.get('service_name')}' "
+                f"({original_count} → {len(services)} services) ({elapsed_ms:.0f}ms)"
+            )
+            return {
+                "success": True,
+                "message": f"Servicio '{tool_input.get('service_name')}' eliminado",
+                "total_services": len(services),
+                "current_menu": [
+                    {
+                        "name": s["name"],
+                        "price": f"${s['price']:.0f}",
+                        "duration": f"{s['duration_minutes']} min",
+                    }
+                    for s in services
+                ],
+                "menu_display": _format_service_menu(services),
+            }
+
         elif tool_name == "get_current_menu":
             services = collected.get("services", [])
             if not services:
@@ -1051,6 +1142,9 @@ class OnboardingHandler(ToolCallingMixin):
                     result["number_message"] = (
                         "Te asignaremos un número de WhatsApp pronto y te avisaremos por este chat"
                     )
+                # Include website URL if configured
+                if org.slug:
+                    result["website_url"] = f"https://{org.slug}.parlo.mx"
                 return result
             except Exception as e:
                 elapsed_ms = (time.time() - start_time) * 1000
@@ -1063,6 +1157,10 @@ class OnboardingHandler(ToolCallingMixin):
             business_name = collected.get("business_name", "tu negocio")
             dashboard_url = f"{_settings.frontend_url}/login"
 
+            website_line = ""
+            if collected.get("wants_website") and collected.get("website_slug"):
+                website_line = f"\n🌐 Tu página web: https://{collected['website_slug']}.parlo.mx\n"
+
             return {
                 "success": True,
                 "message": "Link del dashboard generado",
@@ -1072,7 +1170,8 @@ class OnboardingHandler(ToolCallingMixin):
                 "formatted_message": (
                     f"¡Felicidades! Tu cuenta de {business_name} está activa.\n\n"
                     f"📱 Dashboard: {dashboard_url}\n"
-                    f"(Inicia sesión con tu número de WhatsApp, sin contraseña)\n\n"
+                    f"(Inicia sesión con tu número de WhatsApp, sin contraseña)"
+                    f"{website_line}\n\n"
                     f"Tus clientes ya pueden escribirte por WhatsApp para agendar citas automáticamente."
                 ),
             }
@@ -1168,6 +1267,48 @@ class OnboardingHandler(ToolCallingMixin):
                         "Te asignaremos uno pronto y te avisaremos por WhatsApp."
                     ),
                 }
+
+        elif tool_name == "set_website_preference":
+            wants_website = tool_input.get("wants_website", False)
+            collected["wants_website"] = wants_website
+
+            if wants_website:
+                custom_slug = tool_input.get("custom_slug")
+                if custom_slug:
+                    # Validate and clean custom slug
+                    from app.utils.slug import generate_slug, generate_unique_slug
+
+                    clean = generate_slug(custom_slug)
+                    if not clean:
+                        return {
+                            "success": False,
+                            "error": "El slug no es válido, intenta con otro nombre",
+                        }
+                    slug = await generate_unique_slug(self.db, custom_slug)
+                else:
+                    # Generate from business name
+                    from app.utils.slug import generate_unique_slug
+
+                    business_name = collected.get("business_name", "negocio")
+                    slug = await generate_unique_slug(self.db, business_name)
+
+                collected["website_slug"] = slug
+                org.onboarding_data = collected
+                await self.db.flush()
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.info(f"   🌐 Website preference: {slug}.parlo.mx ({elapsed_ms:.0f}ms)")
+                return {
+                    "success": True,
+                    "message": "Página web configurada",
+                    "website_url": f"{slug}.parlo.mx",
+                    "slug": slug,
+                }
+            else:
+                org.onboarding_data = collected
+                await self.db.flush()
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.info(f"   🌐 Website preference: no website ({elapsed_ms:.0f}ms)")
+                return {"success": True, "message": "Sin página web"}
 
         result = {"error": f"Unknown tool: {tool_name}"}
         elapsed_ms = (time.time() - start_time) * 1000
@@ -1389,6 +1530,11 @@ class OnboardingHandler(ToolCallingMixin):
         org.settings = org_settings
         org.status = OrganizationStatus.ACTIVE.value
         org.onboarding_state = OnboardingState.COMPLETED
+
+        # Set website slug if user opted in during onboarding
+        if collected.get("wants_website") and collected.get("website_slug"):
+            org.slug = collected["website_slug"]
+            logger.info(f"Website slug set: {org.slug}.parlo.mx")
 
         await self.db.flush()
         logger.info(f"Organization {org.id} activated successfully")
