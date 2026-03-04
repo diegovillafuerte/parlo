@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Location, Organization, OrganizationStatus
+from app.models import Location, Organization, OrganizationStatus, ServiceType
+from app.schemas.public import BusinessSiteLocation, BusinessSiteResponse, BusinessSiteService
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -70,4 +71,65 @@ async def get_vcard(
         content=vcard_content,
         media_type="text/vcard",
         headers={"Content-Disposition": f'attachment; filename="{business_name}.vcf"'},
+    )
+
+
+@router.get("/site/{slug}", response_model=BusinessSiteResponse)
+async def get_business_site(
+    slug: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> BusinessSiteResponse:
+    """Get public business page data by slug. No authentication required."""
+    result = await db.execute(
+        select(Organization).where(
+            Organization.slug == slug,
+            Organization.status == OrganizationStatus.ACTIVE.value,
+        )
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    # Get primary location
+    loc_result = await db.execute(
+        select(Location).where(
+            Location.organization_id == org.id,
+            Location.is_primary.is_(True),
+        )
+    )
+    location = loc_result.scalar_one_or_none()
+
+    # Get active services
+    svc_result = await db.execute(
+        select(ServiceType)
+        .where(
+            ServiceType.organization_id == org.id,
+            ServiceType.is_active.is_(True),
+        )
+        .order_by(ServiceType.price_cents)
+    )
+    services = svc_result.scalars().all()
+
+    # WhatsApp number for booking button
+    whatsapp_number = (org.settings or {}).get("twilio_phone_number") or org.phone_number
+
+    return BusinessSiteResponse(
+        business_name=org.name or "Negocio",
+        slug=org.slug,
+        location=BusinessSiteLocation(
+            address=location.address if location else None,
+            business_hours=location.business_hours if location else {},
+        ),
+        services=[
+            BusinessSiteService(
+                name=svc.name,
+                description=svc.description,
+                duration_minutes=svc.duration_minutes,
+                price_cents=svc.price_cents,
+                currency=svc.currency,
+            )
+            for svc in services
+        ],
+        whatsapp_number=whatsapp_number,
+        timezone=org.timezone,
     )

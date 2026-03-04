@@ -4,6 +4,9 @@
 You can test everything yourself. Use simulation, evals, and Playwright.
 Never report "done" without verifying. See `docs/testing.md` for details.
 
+## Feature Backlog
+When a feature is postponed or deferred during implementation, add it to `docs/backlog.md`. Always check the backlog before starting new work to see if related items exist.
+
 ## What is Parlo?
 WhatsApp-native AI scheduling assistant for beauty businesses in Mexico.
 See `docs/PROJECT_SPEC.md` for full specification.

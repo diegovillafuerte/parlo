@@ -35,6 +35,7 @@ class Organization(Base, UUIDMixin, TimestampMixin):
 
     # Basic business info (name nullable during onboarding)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
     phone_country_code: Mapped[str] = mapped_column(String(10), nullable=False)  # +52
     phone_number: Mapped[str] = mapped_column(String(50), nullable=False)
     whatsapp_phone_number_id: Mapped[str | None] = mapped_column(
