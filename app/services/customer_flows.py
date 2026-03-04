@@ -400,6 +400,18 @@ class CustomerFlowHandler:
         flow_session = await self._get_active_flow_session(conversation.id)
         welcome_back_prefix = None
 
+        # Handle confirmation flow responses before AI processing
+        if flow_session and flow_session.flow_type == CustomerFlowType.CONFIRMATION.value:
+            confirmation_response = await self._handle_confirmation_response(
+                flow_session=flow_session,
+                customer=customer,
+                conversation=conversation,
+                message_content=message_content,
+            )
+            if confirmation_response is not None:
+                return confirmation_response
+            # If None, fall through to AI (e.g. reschedule or unrecognized input)
+
         # Check for abandoned state and resume if needed
         if flow_session and flow_session.state == CustomerFlowState.ABANDONED.value:
             flow_session, welcome_back_prefix = await self._resume_abandoned_session(flow_session)
@@ -462,6 +474,95 @@ class CustomerFlowHandler:
             response_text = f"{welcome_back_prefix}\n\n{response_text}"
 
         return response_text
+
+    async def _handle_confirmation_response(
+        self,
+        flow_session: CustomerFlowSession,
+        customer: EndCustomer,
+        conversation: Conversation,
+        message_content: str,
+    ) -> str | None:
+        """Handle customer response to a 24h confirmation message.
+
+        Returns a response string if handled, or None to fall through to AI.
+        """
+        normalized = (
+            message_content.strip()
+            .lower()
+            .replace("á", "a")
+            .replace("é", "e")
+            .replace("í", "i")
+            .replace("ó", "o")
+            .replace("ú", "u")
+        )
+
+        confirm_keywords = {"1", "si", "si, confirmo", "confirmo"}
+        cancel_keywords = {"2", "cancelar", "no, quiero cancelar", "cancela"}
+        reschedule_keywords = {"3", "reagendar", "no, quiero reagendar"}
+
+        appointment_id = (flow_session.collected_data or {}).get("appointment_id")
+
+        if normalized in confirm_keywords:
+            # Confirm the appointment
+            if appointment_id:
+                try:
+                    apt = await self.db.get(Appointment, UUID(appointment_id))
+                    if apt and apt.status == AppointmentStatus.PENDING.value:
+                        apt.status = AppointmentStatus.CONFIRMED.value
+                        await self.db.flush()
+                except Exception:
+                    logger.error(f"Failed to confirm appointment {appointment_id}", exc_info=True)
+
+            flow_session.state = CustomerFlowState.CONFIRMED.value
+            flow_session.is_active = False
+            await self.db.flush()
+            return "\u00a1Perfecto, te esperamos ma\u00f1ana! Hasta pronto \U0001f44b"
+
+        elif normalized in cancel_keywords:
+            # Cancel the appointment
+            if appointment_id:
+                try:
+                    apt = await self.db.get(Appointment, UUID(appointment_id))
+                    if apt and apt.status in (
+                        AppointmentStatus.PENDING.value,
+                        AppointmentStatus.CONFIRMED.value,
+                    ):
+                        apt.status = AppointmentStatus.CANCELLED.value
+                        apt.cancellation_reason = "Cancelado por cliente (confirmaci\u00f3n 24h)"
+                        await self.db.flush()
+                except Exception:
+                    logger.error(f"Failed to cancel appointment {appointment_id}", exc_info=True)
+
+            flow_session.state = CustomerFlowState.CANCELLED.value
+            flow_session.is_active = False
+            await self.db.flush()
+            return (
+                "Tu cita ha sido cancelada. Si deseas agendar otra cita, "
+                "\u00a1escr\u00edbenos cuando quieras!"
+            )
+
+        elif normalized in reschedule_keywords:
+            # Close confirmation flow and create a modify flow for AI to handle
+            flow_session.is_active = False
+            await self.db.flush()
+
+            new_session = CustomerFlowSession(
+                conversation_id=conversation.id,
+                end_customer_id=customer.id,
+                organization_id=self.org.id,
+                flow_type=CustomerFlowType.MODIFY.value,
+                state=CustomerFlowState.COLLECTING_NEW_DATETIME.value,
+                is_active=True,
+                collected_data={"booking_id": appointment_id} if appointment_id else {},
+                last_message_at=datetime.now(UTC),
+            )
+            self.db.add(new_session)
+            await self.db.flush()
+            # Fall through to AI with reschedule context
+            return None
+
+        # Unrecognized input — fall through to AI
+        return None
 
     async def _get_active_flow_session(
         self,
@@ -784,6 +885,7 @@ async def check_abandoned_sessions(db: AsyncSession) -> int:  # org-scope-ok: sy
                     CustomerFlowState.SUBMITTED.value,
                     CustomerFlowState.INQUIRY_ANSWERED.value,
                     CustomerFlowState.ABANDONED.value,
+                    CustomerFlowState.AWAITING_CONFIRMATION.value,
                 ]
             ),
         )

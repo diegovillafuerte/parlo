@@ -90,6 +90,9 @@ class Appointment(Base, UUIDMixin, TimestampMixin):
     reminder_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    confirmation_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     organization: Mapped["Organization"] = relationship(

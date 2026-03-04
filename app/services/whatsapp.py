@@ -270,6 +270,53 @@ class WhatsAppClient:
                 logger.error(f"   Response: {e.response.text}")
             raise
 
+    async def send_confirmation_message(
+        self,
+        to: str,
+        customer_name: str,
+        service_name: str,
+        date_str: str,
+        time_str: str,
+        business_name: str,
+        from_number: str | None = None,
+    ) -> dict[str, Any]:
+        """Send 24h appointment confirmation message.
+
+        Uses Content Template when configured (works outside 24h session window).
+        Falls back to plain text with numbered reply options.
+        """
+        sender = from_number or self.from_number
+        content_sid = settings.twilio_appointment_confirmation_content_sid
+
+        if content_sid:
+            return await self._send_content_template(
+                to=to,
+                content_sid=content_sid,
+                content_variables={
+                    "1": customer_name,
+                    "2": service_name,
+                    "3": date_str,
+                    "4": time_str,
+                    "5": business_name,
+                },
+                from_number=sender,
+            )
+
+        message = (
+            f"\u00a1Hola {customer_name}! Te recordamos tu cita de {service_name} "
+            f"ma\u00f1ana {date_str} a las {time_str} en {business_name}.\n\n"
+            f"Responde:\n"
+            f"1\ufe0f\u20e3 S\u00ed, confirmo\n"
+            f"2\ufe0f\u20e3 No, quiero cancelar\n"
+            f"3\ufe0f\u20e3 No, quiero reagendar"
+        )
+        return await self.send_text_message(
+            phone_number_id=sender or "",
+            to=to,
+            message=message,
+            from_number=sender,
+        )
+
     async def send_template_message(
         self,
         phone_number_id: str,

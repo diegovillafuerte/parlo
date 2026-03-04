@@ -39,6 +39,7 @@ class CustomerFlowType(str, Enum):
     CANCEL = "cancel"  # Cancel booking
     RATING = "rating"  # Post-appointment rating
     INQUIRY = "inquiry"  # General questions (stateless, but tracked for analytics)
+    CONFIRMATION = "confirmation"  # 24h appointment confirmation
 
 
 class CustomerFlowState(str, Enum):
@@ -77,6 +78,11 @@ class CustomerFlowState(str, Enum):
     COLLECTING_RATING = "collecting_rating"  # Waiting for 1-5 rating
     COLLECTING_FEEDBACK = "collecting_feedback"  # Optional text feedback
     SUBMITTED = "submitted"  # Rating saved
+
+    # === Confirmation Flow States ===
+    AWAITING_CONFIRMATION = (
+        "awaiting_confirmation"  # Waiting for customer to confirm/cancel/reschedule
+    )
 
     # === Inquiry Flow ===
     INQUIRY_ANSWERED = "inquiry_answered"  # Question answered (stateless, immediate)

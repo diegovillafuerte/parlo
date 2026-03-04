@@ -37,8 +37,12 @@ celery_app.conf.update(
     worker_concurrency=4,
     # Beat schedule for periodic tasks
     beat_schedule={
-        "check-upcoming-reminders": {
-            "task": "app.tasks.reminders.check_and_send_reminders",
+        "check-upcoming-confirmations": {
+            "task": "app.tasks.reminders.check_and_send_confirmations",
+            "schedule": 300.0,  # Every 5 minutes
+        },
+        "check-short-reminders": {
+            "task": "app.tasks.reminders.check_and_send_short_reminders",
             "schedule": 300.0,  # Every 5 minutes
         },
         "cleanup-old-function-traces": {

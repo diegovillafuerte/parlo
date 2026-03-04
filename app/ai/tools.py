@@ -1016,16 +1016,16 @@ class ToolHandler:
 
         local_start = self._to_local(start_time)
 
-        # Notify business owner(s) about the new booking (fire-and-forget)
+        # Notify assigned staff about the new booking (fire-and-forget)
         try:
-            await self._notify_owners_new_booking(
+            await self._notify_staff_new_booking(
                 customer=customer,
                 service=service,
                 staff=staff,
                 local_start=local_start,
             )
         except Exception as e:
-            logger.error(f"Failed to send owner booking notification: {e}", exc_info=True)
+            logger.error(f"Failed to send staff booking notification: {e}", exc_info=True)
 
         return {
             "success": True,
@@ -1252,16 +1252,15 @@ class ToolHandler:
     # Notifications
     # -------------------------------------------------------------------------
 
-    async def _notify_owners_new_booking(
+    async def _notify_staff_new_booking(
         self,
         customer: Customer,
         service: ServiceType,
         staff: Staff,
         local_start: datetime,
     ) -> None:
-        """Notify business owner(s) about a new AI-booked appointment.
+        """Notify the assigned staff member about a new AI-booked appointment.
 
-        Follows the same pattern as staff_onboarding._notify_owner_staff_onboarded.
         Errors are logged but never raised — booking must always succeed.
 
         Args:
@@ -1270,21 +1269,10 @@ class ToolHandler:
             staff: Staff assigned
             local_start: Appointment start in org-local time
         """
-        from app.models import ParloUserPermissionLevel
         from app.services.whatsapp import WhatsAppClient, resolve_whatsapp_sender
 
-        # Find owner(s)
-        result = await self.db.execute(
-            select(Staff).where(
-                Staff.organization_id == self.org.id,
-                Staff.permission_level == ParloUserPermissionLevel.OWNER.value,
-                Staff.is_active == True,
-            )
-        )
-        owners = result.scalars().all()
-
-        if not owners:
-            logger.warning(f"No owners found for org {self.org.name} (ID: {self.org.id})")
+        if not staff.phone_number:
+            logger.warning(f"Staff {staff.name} has no phone number, skipping notification")
             return
 
         # Build notification message
@@ -1299,29 +1287,22 @@ class ToolHandler:
             f"\U0001f4c5 \u00a1Nueva cita agendada!\n\n"
             f"Cliente: {customer_display} ({customer_phone})\n"
             f"Servicio: {service.name} ({price_str})\n"
-            f"Fecha: {date_str}\n"
-            f"Con: {staff.name}\n\n"
+            f"Fecha: {date_str}\n\n"
             f"Agendada autom\u00e1ticamente por Parlo."
         )
 
-        # Send to each owner
         whatsapp = WhatsAppClient(mock_mode=self.mock_mode)
         try:
-            for owner in owners:
-                if owner.phone_number and owner.id != staff.id:
-                    try:
-                        from_number = (
-                            resolve_whatsapp_sender(self.org) or self.org.whatsapp_phone_number_id
-                        )
-                        await whatsapp.send_text_message(
-                            phone_number_id=self.org.whatsapp_phone_number_id or "",
-                            to=owner.phone_number,
-                            message=message,
-                            from_number=from_number,
-                        )
-                        logger.info(f"Booking notification sent to owner {owner.name}")
-                    except Exception as e:
-                        logger.error(f"Failed to notify owner {owner.name}: {e}")
+            from_number = resolve_whatsapp_sender(self.org) or self.org.whatsapp_phone_number_id
+            await whatsapp.send_text_message(
+                phone_number_id=self.org.whatsapp_phone_number_id or "",
+                to=staff.phone_number,
+                message=message,
+                from_number=from_number,
+            )
+            logger.info(f"Booking notification sent to staff {staff.name}")
+        except Exception as e:
+            logger.error(f"Failed to notify staff {staff.name}: {e}")
         finally:
             await whatsapp.close()
 
