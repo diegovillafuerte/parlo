@@ -1448,9 +1448,9 @@ class ToolHandler:
             lines = []
             for item in formatted:
                 if item["type"] == "appointment":
-                    lines.append(f"⏰ {item['time']} - {item['service']} - {item['customer']}")
+                    lines.append(f"⏰ *{item['time']}* - {item['service']} - {item['customer']}")
                 else:
-                    lines.append(f"🚫 {item['time']} - {item['end_time']} - {item['reason']}")
+                    lines.append(f"🚫 *{item['time']} - {item['end_time']}* - {item['reason']}")
             display = "\n".join(lines)
 
         is_single_day = date_from_str == date_to_str
